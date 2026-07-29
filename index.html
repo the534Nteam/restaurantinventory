@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Pepper Lunch Inventory</title>
+<style>
+  :root{--red:#c8102e;--red-dark:#9c0c23;--ink:#1c1c1e;--muted:#6b7280;--line:#e4e4e7;--bg:#f4f4f5;--card:#fff;--order:#fff4f5;--shadow:0 1px 3px rgba(0,0,0,.08)}
+  *{box-sizing:border-box}html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;-webkit-text-size-adjust:100%}
+  #startScreen{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;background:linear-gradient(160deg,#c8102e,#7d0b1d);padding:8vh 16px}
+  .start{max-width:460px;width:100%;background:#fff;border-radius:18px;padding:26px 24px 30px;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:center}
+  .start .brand{font-weight:800;font-size:22px;color:var(--red);display:flex;align-items:center;justify-content:center;gap:8px}
+  .start .brand .dot{width:14px;height:14px;border-radius:4px;background:#ffd100}
+  .clock{color:var(--muted);font-size:14px;margin-top:14px}.bigdate{font-size:24px;font-weight:800;margin:2px 0}.bigtime{font-size:16px;color:var(--muted)}
+  .namefield{margin:18px 0 6px;text-align:left}
+  .namefield label{display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+  .namefield input,.namefield select{width:100%;padding:12px;border:2px solid var(--line);border-radius:12px;font-size:16px;font-weight:600;background:#fff;color:var(--ink)}
+  .namefield input:focus,.namefield select:focus{outline:none;border-color:var(--red)}
+  .who{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:#fff;background:rgba(255,255,255,.16);padding:5px 10px;border-radius:9px}
+  .loc{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:800;color:#1c1c1e;background:#ffd100;padding:5px 10px;border-radius:9px;cursor:pointer}
+  .loc:hover{background:#ffdb33}
+  .prompt{margin:22px 0 10px;font-weight:700}.daybtns{display:flex;flex-direction:column;gap:12px}
+  .daybtn{padding:18px;border-radius:14px;border:2px solid var(--line);background:#fff;font-size:20px;font-weight:800;cursor:pointer;transition:.12s}
+  .daybtn:hover{border-color:var(--red);color:var(--red);transform:translateY(-1px)}
+  .daybtn.today{border-color:var(--red);color:var(--red);box-shadow:0 0 0 3px rgba(200,16,46,.14)}
+  .daybtn .tt{display:block;font-size:11px;font-weight:700;color:var(--red);margin-top:2px}
+  .start .setuplink{margin-top:20px;font-size:13px}.start .setuplink a{color:var(--muted);cursor:pointer;text-decoration:underline}
+  header{position:sticky;top:0;z-index:20;background:var(--red);color:#fff;padding:10px 14px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+  .hrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .brand{font-weight:800;font-size:17px;letter-spacing:.3px;display:flex;align-items:center;gap:8px}
+  .brand .dot{width:11px;height:11px;border-radius:3px;background:#ffd100;box-shadow:0 0 0 3px rgba(255,255,255,.25)}
+  .grow{flex:1}
+  .daychip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.16);padding:5px 10px;border-radius:9px;cursor:pointer}
+  .daychip b{font-size:15px}.daychip small{opacity:.85;font-size:11px}.daychip .edit{font-size:11px;text-decoration:underline;opacity:.9}
+  nav{display:flex;gap:4px;margin-top:8px}
+  nav button{flex:1;background:rgba(255,255,255,.14);color:#fff;border:none;padding:9px 6px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px}
+  nav button.active{background:#fff;color:var(--red)}
+  main{max-width:1000px;margin:0 auto;padding:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+  .vhead{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:linear-gradient(#fff,#fafafa);border-bottom:1px solid var(--line)}
+  .vhead h2{margin:0;font-size:16px}.vhead .meta{font-size:12px;color:var(--muted)}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
+  .b-web{background:#e0f2fe;color:#075985}.b-excel{background:#dcfce7;color:#166534}.b-text{background:#f3e8ff;color:#6b21a8}
+  .chev{margin-left:auto;transition:transform .15s;color:var(--muted)}.collapsed .chev{transform:rotate(-90deg)}.collapsed .vbody{display:none}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px 8px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);background:#fafafa}
+  td.num,th.num{text-align:center;white-space:nowrap}
+  .itemname{font-weight:600}.sku{font-size:11px;color:var(--muted)}.pkg{font-size:11px;color:var(--muted)}
+  tr.sectionrow td{background:#fbe9ec;color:var(--red);font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:6px 10px}
+  input.count{width:44px;text-align:center;padding:8px 3px;border:2px solid var(--line);border-radius:8px;font-weight:700;font-size:16px}
+  input.count:focus{outline:none;border-color:var(--red)}
+  .addbox{display:flex;align-items:center;gap:4px;justify-content:center}
+  .addbtn{background:var(--red);color:#fff;border:none;border-radius:8px;width:32px;height:36px;font-size:20px;font-weight:800;cursor:pointer;line-height:1}
+  .addbtn:hover{background:var(--red-dark)}
+  .subbtn{background:#e5e7eb;color:#374151;border:none;border-radius:8px;width:30px;height:36px;font-size:22px;font-weight:800;cursor:pointer;line-height:1}
+  .subbtn:hover{background:#d1d5db}
+  .histtbl{margin-bottom:10px}.histtbl th{font-size:10px}.histtbl td{padding:5px 8px;font-size:13px}
+  .addlabels{display:flex;gap:4px;justify-content:center;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
+  .addlabels span{width:44px;text-align:center}
+  .have{font-weight:700;white-space:nowrap}.uu{font-size:11px;color:var(--muted);font-weight:600}
+  .resetbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 4px}
+  .order-cell b{font-weight:800;font-size:16px}
+  tr.toorder{background:var(--order)}tr.toorder .order-cell b{color:var(--red)}
+  .zero{color:var(--muted)}.par{color:var(--muted);font-size:13px}
+  .btn{background:var(--red);color:#fff;border:none;padding:9px 14px;border-radius:8px;font-weight:700;cursor:pointer}
+  .btn:hover{background:var(--red-dark)}.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}.btn.ghost:hover{background:#f8f8f8}
+  .btn.sm{padding:6px 10px;font-size:13px}.btn.gray{background:#374151}.btn.gray:hover{background:#1f2937}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px;border-top:1px solid var(--line);background:#fafafa}
+  .hint{font-size:12px;color:var(--muted);padding:0 14px 12px}
+  .summary{padding:12px 14px}
+  .osec{font-weight:800;color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 2px}
+  .summary .line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}
+  .summary .line:last-child{border-bottom:none}.summary .qty{font-weight:800;color:var(--red);white-space:nowrap}.summary .oh{font-size:11px;color:var(--muted)}
+  .empty{padding:24px;text-align:center;color:var(--muted)}
+  .setup-sec{padding:14px}.setup-sec h3{margin:0 0 4px}.setup-sec .sub{color:var(--muted);font-size:13px;margin-bottom:10px}
+  .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}.field label{font-size:12px;font-weight:700;color:var(--muted)}
+  .field input,.field select,.field textarea{padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+  .setsec{font-weight:800;color:var(--red);font-size:12px;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px;border-bottom:1px solid var(--line);padding-bottom:3px}
+  .parwk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:320px}
+  .parwk .d{display:flex;flex-direction:column;align-items:center;gap:3px}.parwk .d span{font-size:11px;font-weight:700;color:var(--red)}
+  .parwk .d input{width:100%;text-align:center;padding:6px;border:1px solid var(--line);border-radius:6px}
+  .itemrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:#fff}
+  .itemrow .top{display:grid;grid-template-columns:80px 1fr 90px 60px auto 30px;gap:6px;margin-bottom:6px;align-items:center}
+  .itemrow .top input[type=text],.itemrow .top input[type=number]{padding:6px;border:1px solid var(--line);border-radius:6px;width:100%}
+  .prot{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
+  .ctrlline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 6px;font-size:11px;font-weight:700;color:var(--muted)}
+  .ctrlline input,.ctrlline select{padding:5px 6px;border:1px solid var(--line);border-radius:6px}
+  .ctrlline input.sec{width:180px}.ctrlline input.un{width:90px}
+  .x{background:#fee2e2;color:#991b1b;border:none;border-radius:6px;cursor:pointer;font-weight:800;height:30px}
+  .parlabel{font-size:11px;font-weight:700;color:var(--muted);margin:2px 0}
+  details.vedit{border:1px solid var(--line);border-radius:10px;margin-bottom:12px;background:#fff}
+  details.vedit>summary{padding:12px;font-weight:700;cursor:pointer;list-style:none}
+  details.vedit>summary::-webkit-details-marker{display:none}.vedit .inner{padding:0 12px 12px}
+  .flash{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.3);z-index:50;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}
+  .flash.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  @media(max-width:640px){th.hide-m,td.hide-m{display:none}.itemrow .top{grid-template-columns:1fr 1fr}main{padding:10px}}
+  /* sync + passcode */
+  .synced{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.16);padding:5px 9px;border-radius:9px}
+  .synced .dotc{width:8px;height:8px;border-radius:50%;background:#9ca3af}
+  .synced.on .dotc{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.25)}
+  .synced.err .dotc{background:#f59e0b}
+  #gateScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#c8102e,#7d0b1d);padding:8vh 16px}
+  .gate{max-width:360px;width:100%;background:#fff;border-radius:18px;padding:28px 24px;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:center}
+  .gate .brand{font-weight:800;font-size:20px;color:var(--red);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:6px}
+  .gate .dot{width:13px;height:13px;border-radius:4px;background:#ffd100}
+  .gate p{color:var(--muted);font-size:14px;margin:6px 0 16px}
+  .gate input{width:100%;padding:14px;border:2px solid var(--line);border-radius:12px;font-size:20px;font-weight:700;text-align:center;letter-spacing:4px}
+  .gate input:focus{outline:none;border-color:var(--red)}
+  .gate .err{color:var(--red);font-size:13px;font-weight:600;min-height:18px;margin-top:8px}
+  .gate button{margin-top:12px;width:100%}
+</style>
+</head>
+<body>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<!-- ============ PASSCODE GATE (only when cloud sync is configured) ============ -->
+<div id="gateScreen" style="display:none">
+  <div class="gate">
+    <div class="brand"><span class="dot"></span> Pepper Lunch</div>
+    <p>Enter the store passcode to access the shared inventory.</p>
+    <input id="gateInput" type="tel" inputmode="numeric" maxlength="12" placeholder="••••" autocomplete="off">
+    <div class="err" id="gateErr"></div>
+    <button class="btn" id="gateBtn">Unlock</button>
+  </div>
+</div>
+
+<div id="startScreen">
+  <div class="start">
+    <div class="brand"><span class="dot"></span> Pepper Lunch Inventory</div>
+    <div class="clock" id="clockLine">Today is</div>
+    <div class="bigdate" id="bigDate">—</div>
+    <div class="bigtime" id="bigTime">—</div>
+    <div class="namefield"><label for="locInput">Store location</label><select id="locInput"></select></div>
+    <div class="namefield"><label for="nameInput">Your name</label><select id="nameInput"><option value="">Select your name…</option><option>Joy</option><option>Liam</option><option>Levi</option><option>Nari</option><option>Sean</option></select></div>
+    <div class="prompt">Which day are you ordering for?</div>
+    <div class="daybtns" id="dayBtns"></div>
+    <div class="setuplink"><a id="goSetup">⚙️ Go to setup instead</a></div>
+  </div>
+</div>
+
+<div id="appScreen" style="display:none">
+  <header>
+    <div class="hrow">
+      <div class="brand"><span class="dot"></span> Pepper Lunch</div>
+      <div class="loc" id="locLabel" title="Switch location">📍 Moanalua</div>
+      <div class="who" id="whoLabel" style="display:none"></div>
+      <div class="grow"></div>
+      <div class="synced" id="syncChip" title="Sync status" style="display:none"><span class="dotc"></span><span id="syncTxt">Offline</span></div>
+      <div class="daychip" id="daychip" title="Change order day">
+        <div><b id="chipDay">—</b> <small id="chipDate"></small></div><span class="edit">change ▸</span>
+      </div>
+    </div>
+    <nav>
+      <button data-tab="count" class="active">📋 Count</button>
+      <button data-tab="orders">📦 Orders</button>
+      <button data-tab="history">🕓 History</button>
+      <button data-tab="setup">⚙️ Setup</button>
+    </nav>
+  </header>
+  <main>
+    <div id="tab-count"></div>
+    <div id="tab-orders" style="display:none"></div>
+    <div id="tab-history" style="display:none"></div>
+    <div id="tab-setup" style="display:none"></div>
+  </main>
+</div>
+
+<div class="flash" id="flash"></div>
+
+<script>
+const WEEK=['sun','mon','tue','wed','thu','fri','sat'];
+const FULL={sun:'Sunday',mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday'};
+const ORDER_DAYS=['tue','thu','fri'];
+const STORE_KEY='pepperlunch_inventory_v5';
+
+/* ============================================================
+   CLOUD SYNC (Firebase Firestore) — optional.
+   Paste your Firebase project's web config below. Leave apiKey
+   empty to run fully offline (localStorage only).
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBYg1P7o7fv-yOiGOHPo9LL5JusfsW9Kk4",
+  authDomain: "pepper-lunch-inventory.firebaseapp.com",
+  projectId: "pepper-lunch-inventory",
+  storageBucket: "pepper-lunch-inventory.firebasestorage.app",
+  messagingSenderId: "50685384814",
+  appId: "1:50685384814:web:ab9fcc66c22317b1e22e7f"
+};
+let SYNC = { on:false, db:null, storeRef:null, indexRef:null, unsub:[], applying:false };
+function syncEnabled(){ return typeof firebase!=='undefined' && FIREBASE_CONFIG.apiKey; }
+
+let idCounter=1;
+function uid(){ return 'x'+(idCounter++)+'_'+(Date.now()%100000); }
+function parsePerCase(pkg){ const m=String(pkg||'').match(/^\s*(\d+)\s*\//); return m?Number(m[1]):1; }
+function allDays(v){ const p={}; ORDER_DAYS.forEach(d=>p[d]=(v||0)); return p; }
+/* mk(sku,name,pkg,par,opts) — opts:{protein,loose,unit,pc,brand} */
+function mk(sku,name,pkg,par,opts){ opts=opts||{};
+  return {id:uid(),sku:sku||'',name,pkg:pkg||'',perCase:opts.pc||parsePerCase(pkg),
+    protein:!!opts.protein, section:'', parUnit:opts.loose?'loose':'case',
+    unit:opts.unit||(opts.protein?'bag':'pack'), brand:opts.brand||'', pars:allDays(par)}; }
+function sect(name,arr){ arr.forEach(i=>i.section=name); return arr; }
+
+function seedConfig(){
+  return { recipientsGlobal:'',
+    locations:[{id:'moanalua',name:'Moanalua'}], locationId:'moanalua',
+    vendors:[
+      { id:uid(), name:'Wismettac', method:'web', recipients:'',
+        note:'Enter these quantities into the vendor web portal (Add to Cart).',
+        items:[].concat(
+          sect('Grocery & Dry',[
+            mk('25011','OIL SESAME OIL 56FL JPN SK','10/ 56 FZ',1,{loose:true,unit:'bottle'}),
+            mk('30557','MISO MISHIMA INST MISO SOUP WHITE 3P','2/12/ 1.05 OZ',1),
+            mk('88094','SHRIMP BREADED EBI FRY 5P SE&E ASIA SK F','20/ 4.7 OZ',1,{protein:true}),
+            mk('01263A','RICE SEKKA 40LB 25','40 LB',8,{loose:true,unit:'bag'}),
+            mk('20526A','DRESSING DEEP ROASTED SESAME 64OZ QP','4/ 64 FZ',2,{loose:true,unit:'bottle'}),
+            mk('94250A','CHICKEN KARAAGE 1KG AJINOMOTO 6990103 F','6/ 2.2 LB',1,{protein:true}),
+          ]),
+          sect('Meat & Seafood',[
+            mk('94145','PL BEEF NEW YORK STK 8OZ AAB 10780 F','LB (catch wt)',2,{protein:true}),
+            mk('82682','PL SHRIMP COOKED P&D 31/40 TO USA F','5/ 2 LB',9,{protein:true}),
+            mk('87379','PL BEEF CHUCK ROLL ANGUS CD 5LB 14200 F','4/ 5 LB',60,{protein:true,loose:true,unit:'bag'}),
+            mk('87380','PL BEEF SHORTPLATE NAVEL SC 4LB 14202 F','6/ 4 LB',11,{protein:true}),
+            mk('87383','PL CHICKEN BREAST DICE MARINATE CK 5-7OZ F','2/ 5 LB',6,{protein:true}),
+            mk('87384','PL CHICKEN THIGH MEAT 5-7OZ CUT COOKED F','2/ 5 LB',3,{protein:true}),
+            mk('82620A','PL SALMON ATLN FILLET 2.5OZ SKINON USA F','LB (catch wt)',1,{protein:true}),
+            mk('82628A','PL SALMON ATLN TRIM 1X1 BLS/SNLS USA F','LB (catch wt)',6,{protein:true}),
+            mk('94129B','PL BEEF CHUCKROLL SLICED 2MM 10787 AAB F','4/ 6 LB',0,{protein:true}),
+            mk('94149','PL BEEF RIBEYE STK 8 OZ AAB 10783 F','LB (catch wt)',2,{protein:true}),
+            mk('94132','PL BEEF HAMBURG STK 80G WCPM#14198','LB (catch wt)',2,{protein:true}),
+          ]),
+          sect('Sauces & Supplies',[
+            mk('16481','PL SAUCE STEAK SPICY 60.8OZ','6/ 1.8 L',2),
+            mk('16482','PL SAUCE STEAK MILD 60.8OZ','8/ 1.8 L',3),
+            mk('21452','PEPPER LUNCH PEPPER PASTE NO BHT F','12/ 31.74 OZ',4),
+            mk('54134','CHOPSTICK B-R-9 PEPPER LUNCH','20/ 100 PR',0.25),
+            mk('21316','PL SAUCE KIMCHI 83.2OZ OTAFUKU','6/ 83.2 OZ',4,{loose:true,unit:'bottle'}),
+            mk('17089','PEPPER LUNCH TERIYAKI SAUCE','6/ 5 LB 3.9 OZ',2,{loose:true,unit:'bottle'}),
+            mk('15026','PEPPER LUNCH CAN W. KERNEL SWEET CORN','6/ 2125 G',7),
+            mk('17090','PEPPER LUNCH CURRY SAUCE F','48 PC',3),
+            mk('17091','PEPPER LUNCH CREAM SAUCE F','48 PC',2),
+          ])
+        )},
+      { id:uid(), name:'Y. Hata', method:'excel', recipients:'czorder@yhata.com',
+        note:'Auto-populates the Y. Hata Manual Order Sheet. Download and email to czorder@yhata.com by 12 noon the day before delivery (routed Tue & Fri). Customer #847089.',
+        items:[].concat(
+          sect('FROZEN',[
+            mk('234803','FRIES BEER BATTERED','6/ 5 LB',1.5,{brand:'BREW CITY'}),
+            mk('273905','GREEN BEANS WHOLE','12/ 2 LB',0.5,{brand:'BOUNTIFUL HARVEST'}),
+            mk('273907','CARROTS IQF CRINKLE CUT','1/ 30 LB',0.5,{brand:'BOUNTIFUL HARVEST'}),
+            mk('460150','BEEF BRISKET BURNT ENDS','2/ 5 LB',6,{protein:true,brand:'DOUBLE L RANCH'}),
+          ]),
+          sect('CHEESE & DAIRY',[
+            mk('455508','MOZZARELLA SHREDDED','4/ 5 LB',4,{loose:true,unit:'bag',brand:'VILLA FRIZZONI'}),
+            mk('42998','PARMESAN GRATED','4/ 5 LB',3,{loose:true,unit:'bag',brand:'VILLA FRIZZONI'}),
+          ]),
+          sect('OIL',[
+            mk('130252','OIL CLEAR FRY CANOLA','1/ 35 LB',0.5,{brand:'HEAVENLY CHEF'}),
+            mk('422843','OIL EVOO (TIN)','6/ 1 GL',0.5,{brand:'VILLA FRIZZONI'}),
+          ]),
+          sect('BACON',[
+            mk('117694','BACON TOPPING 1/4" COOKED','2/ 5 LB',1,{protein:true,loose:true,unit:'bag',brand:'PRAIRIE CREEK'}),
+          ]),
+          sect('DESSERT',[
+            mk('458965','CHEESECAKE YUZU INDIVIDUAL','8/ 4 CT',1,{brand:'SWEET STREET'}),
+            mk('53006','CAKE CHOCOLATE FLOURLESS GF','32/ 3.23 OZ',1,{brand:'SWEET STREET'}),
+          ]),
+          sect('SPICES & DRY',[
+            mk('232695','PASTA SPAGHETTI 10"','2/ 10 LB',1.5,{brand:'VILLA FRIZZONI'}),
+            mk('73182','GARLIC FRIED','12/ 8 OZ',1,{loose:true,unit:'bag',brand:'CHEF CHOICE'}),
+          ])
+        )},
+      { id:uid(), name:'Nari', method:'text', recipients:'', note:'',
+        items:[].concat(
+          sect('Cooler & Cleaning',[
+            mk('','KIMCHI','',12,{loose:true,unit:'jar'}),
+            mk('','GREEN ONIONS','',5,{loose:true,unit:'bag'}),
+            mk('','ONION RINGS','',2,{unit:'bag'}),
+            mk('','SANITIZER','',1,{loose:true,unit:'container'}),
+            mk('','DISH SOAP','',1,{loose:true,unit:'container'}),
+            mk('','DISHWASHING SOAP','',2,{loose:true,unit:'jar'}),
+            mk('','FLOOR CLEANER','',1,{loose:true,unit:'container'}),
+            mk('','TOILET CLEANER','',1,{loose:true,unit:'pack'}),
+            mk('','SMALL OIL','',1,{loose:true,unit:'container'}),
+          ]),
+          sect('Dry Goods',[
+            mk('','SESAME SEEDS','',1,{loose:true,unit:'bag'}),
+            mk('','PEPPER CORN','',2,{loose:true,unit:'container'}),
+          ]),
+          sect('Greens',[ mk('','KALE','',3,{loose:true,unit:'bag'}) ])
+        )},
+      { id:uid(), name:'Manson', method:'text', recipients:'', note:'',
+        items:[
+          mk('','SLICED MUSHROOMS','',2),
+          mk('','YELLOW ONIONS 50LBS','',0.25,{loose:true,unit:'bag'}),
+          mk('','EGG','',1),
+          mk('','CUCUMBER','',3,{loose:true,unit:'piece'}),
+          mk('','CHERRY TOMATOS','',1,{loose:true,unit:'container'}),
+          mk('','DICED CABBAGE SLAW MIX','',1),
+        ]},
+      { id:uid(), name:'Paradise City', method:'text', recipients:'', note:'',
+        items:[
+          mk('','PRINTER PAPER','',0),
+          mk('','M VINYL GLOVES','',0.5),
+          mk('','XL VINYL GLOVES','',1.5),
+          mk('','9x6 MFFP WHITE HINGED CONTAINERS','',1),
+          mk('','6x6 MFFP WHITE HINGED CONTAINERS','',1),
+          mk('','TO-GO BOX #1 30OZ','',1),
+          mk('','TAKEOUT BAG 10x9x20','',1),
+          mk('','1OZ PORTION CUP CONTAINERS','',1),
+          mk('','1OZ PORTION CUP LIDS','',1),
+          mk('','9" INDIVIDUALLY WRAPPED COMPOSTABLE STRAWS','',0.25),
+          mk('','KARAT TALL NAPKINS','',1),
+          mk('','CUTLERY KIT','',2),
+          mk('','20OZ PAPER CUPS','',1),
+          mk('','20OZ CUP LIDS','',1),
+          mk('','43x48 CLEAN CAN LINER','',0.25),
+        ]},
+      { id:uid(), name:'Pepsi', method:'text', recipients:'', note:'',
+        items:[
+          mk('','PEPSI','',0),
+          mk('','PEPSI ZERO','',0),
+          mk('','MOUNTAIN DEW','',0),
+          mk('','FRUIT PUNCH','',0),
+          mk('','STARRY','',0),
+          mk('','LEMONADE','',0),
+          mk('','CO2','',0,{unit:'tank'}),
+        ]},
+    ]
+  };
+}
+
+let state,counts,history,ui={tab:'count',day:null};
+function load(){ try{ const raw=localStorage.getItem(STORE_KEY); if(raw){ const o=JSON.parse(raw); state=o.config; counts=o.counts||{}; history=o.history||[]; } }catch(e){} if(!state) state=seedConfig(); if(!counts) counts={}; if(!history) history=[];
+  if(!state.locations||!state.locations.length) state.locations=[{id:'moanalua',name:'Moanalua'}];
+  if(!state.locationId||!state.locations.some(l=>l.id===state.locationId)) state.locationId=state.locations[0].id; }
+function save(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify({config:state,counts,history})); }catch(e){} if(SYNC.on&&!SYNC.applying) schedulePush(); }
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function num(v){ return (v===''||v==null||isNaN(v))?0:Number(v); }
+function cell(id){ return counts[id]||(counts[id]={c:'',l:''}); }
+function pc(it){ return it.perCase>0?it.perCase:1; }
+function totalLoose(it){ const c=cell(it.id); return num(c.c)*pc(it)+num(c.l); }
+function onHandParUnit(it){ return it.parUnit==='loose' ? totalLoose(it) : totalLoose(it)/pc(it); }
+function orderQty(it,day){ const need=(Number(it.pars[day])||0)-onHandParUnit(it); return need>0?Math.ceil(need):0; }
+function parULabel(it){ return it.parUnit==='loose'?(it.unit||'ea'):'cs'; }
+function haveText(it,empty){ const c=cell(it.id),a=num(c.c),b=num(c.l); if(!a&&!b) return empty||'—'; const p=[]; if(a)p.push(a+' cs'); if(b)p.push(b+' '+(it.unit||'ea')); return p.join(' / '); }
+function methodBadge(m){ return m==='excel'?'<span class="badge b-excel">Excel form</span>':m==='web'?'<span class="badge b-web">Web portal</span>':'<span class="badge b-text">Text / email</span>'; }
+function flash(msg){ const f=document.getElementById('flash'); f.textContent=msg; f.classList.add('show'); clearTimeout(f._t); f._t=setTimeout(()=>f.classList.remove('show'),1800); }
+function fmtDate(d){ return d.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}); }
+function fmtTime(d){ return d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+function findItem(id){ for(const v of state.vendors){ const it=v.items.find(x=>x.id===id); if(it) return {v,it}; } return {}; }
+function vendorSections(v){ const order=[],map={}; v.items.forEach(it=>{ const s=it.section||''; if(!(s in map)){ map[s]=[]; order.push(s); } map[s].push(it); }); order.forEach(s=>map[s].sort((a,b)=>a.name.localeCompare(b.name))); return order.map(s=>({name:s,items:map[s]})); }
+function toOrderCount(v,day){ let n=0; v.items.forEach(it=>{ if(orderQty(it,day)>0) n++; }); return n; }
+
+/* START */
+function renderStart(){ const now=new Date();
+  document.getElementById('bigDate').textContent=fmtDate(now); document.getElementById('bigTime').textContent=fmtTime(now);
+  const locIn=document.getElementById('locInput');
+  locIn.innerHTML=state.locations.map(l=>`<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('');
+  locIn.value=state.locationId||(state.locations[0]&&state.locations[0].id);
+  locIn.onchange=()=>{ state.locationId=locIn.value; save(); };
+  const nameIn=document.getElementById('nameInput'); nameIn.value=state.userName||'';
+  nameIn.onchange=()=>{ state.userName=nameIn.value; save(); };
+  const todayKey=WEEK[now.getDay()],host=document.getElementById('dayBtns');
+  host.innerHTML=ORDER_DAYS.map(d=>`<button class="daybtn ${d===todayKey?'today':''}" data-day="${d}">${FULL[d]}${d===todayKey?'<span class="tt">Today</span>':''}</button>`).join('');
+  host.querySelectorAll('[data-day]').forEach(b=>b.addEventListener('click',()=>enterApp(b.dataset.day)));
+}
+let clockTimer=null;
+function startClock(){ const tick=()=>{ const now=new Date(),bd=document.getElementById('bigDate'),bt=document.getElementById('bigTime'); if(bd)bd.textContent=fmtDate(now); if(bt)bt.textContent=fmtTime(now); const cd=document.getElementById('chipDate'); if(cd)cd.textContent=fmtDate(now).replace(/^\w+,?\s*/,''); }; tick(); clearInterval(clockTimer); clockTimer=setInterval(tick,15000); }
+
+/* NAV */
+function showStart(){ document.getElementById('startScreen').style.display=''; document.getElementById('appScreen').style.display='none'; renderStart(); }
+function enterApp(dayKey){ ui.day=dayKey;
+  const locIn=document.getElementById('locInput'); if(locIn&&locIn.value){ state.locationId=locIn.value; }
+  const nameIn=document.getElementById('nameInput'); if(nameIn){ state.userName=nameIn.value.trim(); } save();
+  const loc=state.locations.find(l=>l.id===state.locationId)||state.locations[0];
+  const locLabel=document.getElementById('locLabel'); if(locLabel) locLabel.textContent='📍 '+(loc?loc.name:'—');
+  if(SYNC.on && SYNC.storeRef && SYNC.storeRef.id!==locDocId()) subscribeLocation();
+  document.getElementById('startScreen').style.display='none'; document.getElementById('appScreen').style.display='';
+  const who=document.getElementById('whoLabel'); if(state.userName){ who.textContent='👤 '+state.userName; who.style.display=''; } else who.style.display='none';
+  document.getElementById('chipDay').textContent=FULL[dayKey]; document.getElementById('chipDate').textContent=fmtDate(new Date()).replace(/^\w+,?\s*/,''); switchTab('count'); }
+
+/* COUNT */
+function renderCount(){
+  const day=ui.day,host=document.getElementById('tab-count');
+  let html='';
+  state.vendors.forEach(v=>{
+    const collapsed=v._collapsed?'collapsed':'',secs=vendorSections(v),hasSections=secs.length>1||(secs[0]&&secs[0].name);
+    let rows='';
+    secs.forEach(sec=>{
+      if(hasSections&&sec.name) rows+=`<tr class="sectionrow"><td colspan="6">${esc(sec.name)}</td></tr>`;
+      sec.items.forEach(it=>{
+        const par=it.pars[day]||0,q=orderQty(it,day),ul=parULabel(it);
+        rows+=`<tr class="${q>0?'toorder':''}" data-row="${it.id}">
+          <td class="hide-m"><span class="sku">${esc(it.sku||'—')}</span></td>
+          <td><div class="itemname">${esc(it.name)}</div><div class="pkg hide-m">${esc(it.pkg||'')}${it.perCase>1?' · '+it.perCase+'/case':''}</div></td>
+          <td class="num par">${par||0} ${ul}</td>
+          <td class="num"><div class="addbox">
+            <input class="count" inputmode="decimal" data-item="${it.id}" data-k="c" placeholder="cs">
+            <input class="count" inputmode="decimal" data-item="${it.id}" data-k="l" placeholder="${esc((it.unit||'ea').slice(0,3))}">
+            <button class="subbtn" data-sub="${it.id}" title="Subtract from total">−</button>
+            <button class="addbtn" data-add="${it.id}" title="Add to on-hand total">＋</button>
+          </div><div class="addlabels"><span>case</span><span>${esc(it.unit||'ea')}</span><span></span><span></span></div></td>
+          <td class="num"><span class="have" data-have="${it.id}">${haveText(it)}</span> <button class="resetbtn" data-reset="${it.id}" title="Reset this item">↺</button></td>
+          <td class="num order-cell ${q>0?'':'zero'}" data-order="${it.id}"><b>${q}</b> <span class="uu">${ul}</span></td>
+        </tr>`;
+      });
+    });
+    html+=`<div class="card vendor ${collapsed}" data-vid="${v.id}">
+      <div class="vhead" data-toggle="${v.id}"><h2>${esc(v.name)}</h2>${methodBadge(v.method)}
+        <span class="meta" data-meta="${v.id}">${v.items.length} items</span><span class="chev">▾</span></div>
+      <div class="vbody"><table><thead><tr>
+        <th class="hide-m">SKU</th><th>Item</th><th class="num">Par</th><th class="num">Add count</th><th class="num">On hand</th><th class="num">Order</th>
+      </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  });
+  html+=`<div class="row" style="margin:4px 2px 24px"><button class="btn ghost sm" id="clearCounts">Clear all counts</button>
+    <span class="hint" style="padding:0">Type a location's count, press <b>＋</b> (or Enter) to add it in — repeat per storage area. Order = par − on hand.</span></div>`;
+  host.innerHTML=html; updateAllMeta();
+
+  function doAdd(id){
+    const cIn=host.querySelector('input[data-item="'+id+'"][data-k="c"]'),lIn=host.querySelector('input[data-item="'+id+'"][data-k="l"]');
+    const ac=num(cIn.value),al=num(lIn.value); if(!ac&&!al){ cIn.focus(); return; }
+    const t=cell(id); t.c=num(t.c)+ac; t.l=num(t.l)+al; save(); pushCount(id); cIn.value=''; lIn.value=''; refreshItem(id); cIn.focus();
+    flash('Added — total is now '+haveText(findItem(id).it,'0'));
+  }
+  function refreshItem(id){ const it=findItem(id).it,q=orderQty(it,ui.day);
+    const h=host.querySelector('[data-have="'+id+'"]'); if(h) h.textContent=haveText(it);
+    const oc=host.querySelector('[data-order="'+id+'"]'); if(oc){ oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('tr').classList.toggle('toorder',q>0); } updateAllMeta();
+  }
+  function updateAllMeta(){ state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(!m) return; const n=toOrderCount(v,ui.day); m.innerHTML=`${v.items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; }); }
+  function doSub(id){
+    const cIn=host.querySelector('input[data-item="'+id+'"][data-k="c"]'),lIn=host.querySelector('input[data-item="'+id+'"][data-k="l"]');
+    const ac=num(cIn.value),al=num(lIn.value); if(!ac&&!al){ cIn.focus(); return; }
+    const t=cell(id); t.c=Math.max(0,num(t.c)-ac); t.l=Math.max(0,num(t.l)-al); save(); pushCount(id); cIn.value=''; lIn.value=''; refreshItem(id); cIn.focus();
+    flash('Removed — total is now '+haveText(findItem(id).it,'0'));
+  }
+  host.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>doAdd(b.dataset.add)));
+  host.querySelectorAll('[data-sub]').forEach(b=>b.addEventListener('click',()=>doSub(b.dataset.sub)));
+  host.querySelectorAll('input.count').forEach(inp=>inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(inp.dataset.item); }}));
+  host.querySelectorAll('[data-reset]').forEach(b=>b.addEventListener('click',()=>{ const t=cell(b.dataset.reset); t.c=''; t.l=''; save(); pushCount(b.dataset.reset); refreshItem(b.dataset.reset); }));
+  host.querySelectorAll('[data-toggle]').forEach(h=>h.addEventListener('click',()=>{ const v=state.vendors.find(x=>x.id===h.dataset.toggle); v._collapsed=!v._collapsed; h.closest('.vendor').classList.toggle('collapsed'); }));
+  document.getElementById('clearCounts').addEventListener('click',()=>{ if(confirm('Clear all on-hand counts?')){ counts={}; save(); pushCountsClear(); renderCount(); }});
+}
+
+/* ORDERS */
+function buildTextOrder(v,day){
+  let out=`PEPPER LUNCH — ${v.name} order\nOrder day: ${FULL[day]}\n`+(state.userName?`Counted by: ${state.userName}\n`:'')+`\n`,total=0;
+  vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
+    if(sec.name) out+=`— ${sec.name} —\n`;
+    lines.forEach(l=>{ const sku=l.it.sku?l.it.sku+'  ':''; out+=`${(l.q+' '+parULabel(l.it)).padStart(8,' ')}  ${sku}${l.it.name}\n`; total++; }); out+='\n'; });
+  if(!total) out+='(Nothing to order — all pars met.)\n'; else out+=`Total items: ${total}`;
+  return out;
+}
+function renderOrders(){
+  const day=ui.day,host=document.getElementById('tab-orders');
+  let html=`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between"><div><b>Order summary</b> — ${FULL[day]}</div><div class="row"><button class="btn sm" id="saveInv">💾 Save this inventory</button><button class="btn sm ghost" id="printBtn">🖨️ Print all</button></div></div></div></div>`;
+  state.vendors.forEach(v=>{
+    const recips=(v.recipients||'').trim()||(state.recipientsGlobal||'').trim(); let inner='',n=0;
+    vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
+      if(sec.name) inner+=`<div class="osec">${esc(sec.name)}</div>`;
+      inner+=lines.map(l=>{ n++; return `<div class="line"><span>${l.it.sku?'<span class="sku">'+esc(l.it.sku)+'</span> ':''}${esc(l.it.name)} <span class="oh">(have ${haveText(l.it,'0')})</span></span><span class="qty">${l.q} ${parULabel(l.it)}</span></div>`; }).join('');
+    });
+    const body=n?`<div class="summary">${inner}</div>`:`<div class="empty">Nothing to order for ${v.name} — all pars met for ${FULL[day]}.</div>`;
+    let tools=`<button class="btn sm" data-copy="${v.id}">📋 Copy list</button>`;
+    if(v.method==='excel') tools+=`<button class="btn sm gray" data-xlsx="${v.id}">⬇️ Download Excel</button>`;
+    if(recips) tools+=`<button class="btn sm ghost" data-email="${v.id}">✉️ Email${v.method==='excel'?' (then attach)':''}</button>`;
+    html+=`<div class="card"><div class="vhead" style="cursor:default"><h2>${esc(v.name)}</h2>${methodBadge(v.method)}<span class="meta">${n} to order</span></div>
+      ${body}${recips?`<div class="hint">Recipients: ${esc(recips)}</div>`:`<div class="hint">No recipients set — add them in ⚙️ Setup.</div>`}<div class="toolbar">${tools}</div></div>`;
+  });
+  host.innerHTML=html;
+  host.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>{ copyText(buildTextOrder(state.vendors.find(x=>x.id===b.dataset.copy),day)); flash('Order list copied'); }));
+  host.querySelectorAll('[data-xlsx]').forEach(b=>b.addEventListener('click',()=>downloadExcel(state.vendors.find(x=>x.id===b.dataset.xlsx),day)));
+  host.querySelectorAll('[data-email]').forEach(b=>b.addEventListener('click',()=>emailOrder(state.vendors.find(x=>x.id===b.dataset.email),day)));
+  document.getElementById('printBtn').addEventListener('click',()=>printAll(day));
+  document.getElementById('saveInv').addEventListener('click',saveSnapshot);
+}
+function saveSnapshot(){
+  const day=ui.day,now=new Date();
+  const snap={ts:now.toISOString(), dateStr:fmtDate(now), timeStr:fmtTime(now), day, name:state.userName||'', vendors:[]};
+  state.vendors.forEach(v=>{
+    const items=v.items.map(it=>({name:it.name, sku:it.sku||'', have:haveText(it,'0'), ohUnits:Math.round(onHandParUnit(it)*100)/100, par:it.pars[day]||0, order:orderQty(it,day), unit:parULabel(it)}));
+    const toOrder=items.filter(i=>i.order>0).length;
+    snap.vendors.push({name:v.name, method:v.method, toOrder, items});
+  });
+  history.unshift(snap); if(history.length>200) history.length=200; save();
+  flash('Inventory saved to History'); switchTab('history');
+}
+function emailOrder(v,day){
+  const recips=((v.recipients||'').trim()||(state.recipientsGlobal||'').trim()).replace(/\s+/g,'');
+  const subject=`Pepper Lunch order — ${v.name} — ${FULL[day]}`;
+  let body=buildTextOrder(v,day); if(v.method==='excel') body+='\n\n(See attached Excel order form.)';
+  if(v.method==='excel'){ downloadExcel(v,day); flash('Excel downloaded — attach it to the email'); }
+  window.location.href=`mailto:${encodeURIComponent(recips)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+function copyText(t){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(()=>fallbackCopy(t)); else fallbackCopy(t); }
+function fallbackCopy(t){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} ta.remove(); }
+function printAll(day){
+  let w=window.open('','_blank');
+  let h=`<html><head><title>Pepper Lunch Orders — ${FULL[day]}</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h1{color:#c8102e;margin:0 0 4px}h2{margin:22px 0 4px;border-bottom:2px solid #c8102e;padding-bottom:3px}h3{margin:12px 0 4px;color:#c8102e;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}td,th{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f3f3f3}.q{text-align:center;font-weight:bold;width:90px}.none{color:#666;font-style:italic}</style></head><body><h1>Pepper Lunch — Order Sheet</h1><div>Order day: <b>${FULL[day]}</b>${state.userName?' &nbsp; Counted by: <b>'+esc(state.userName)+'</b>':''} &nbsp; Printed: ${fmtDate(new Date())}</div>`;
+  state.vendors.forEach(v=>{ h+=`<h2>${esc(v.name)} — ${v.method}</h2>`; let any=false;
+    vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return; any=true;
+      if(sec.name) h+=`<h3>${esc(sec.name)}</h3>`; h+='<table><tr><th>Order</th><th>SKU</th><th>Item</th><th>On hand</th></tr>';
+      lines.forEach(l=>{ h+=`<tr><td class="q">${l.q} ${parULabel(l.it)}</td><td>${esc(l.it.sku||'')}</td><td>${esc(l.it.name)}</td><td>${haveText(l.it,'0')}</td></tr>`; }); h+='</table>'; });
+    if(!any) h+='<div class="none">Nothing to order.</div>'; });
+  h+='</body></html>'; w.document.write(h); w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
+}
+
+/* XLSX */
+const CRC_TABLE=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; } return t; })();
+function crc32(b){ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c=CRC_TABLE[(c^b[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function sB(s){ return new TextEncoder().encode(s); }
+function zipStore(files){ const chunks=[],central=[]; let offset=0; const u16=n=>[n&255,(n>>8)&255],u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  files.forEach(f=>{ const nB=sB(f.name),data=f.bytes,crc=crc32(data);
+    const loc=[].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nB.length),u16(0));
+    const lh=new Uint8Array(loc.length+nB.length); lh.set(loc,0); lh.set(nB,loc.length); chunks.push(lh,data);
+    const cen=[].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nB.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset));
+    const ch=new Uint8Array(cen.length+nB.length); ch.set(cen,0); ch.set(nB,cen.length); central.push(ch); offset+=lh.length+data.length; });
+  let cenSize=0; central.forEach(c=>cenSize+=c.length);
+  const end=[].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cenSize),u32(offset),u16(0));
+  const parts=[...chunks,...central,new Uint8Array(end)]; let total=0; parts.forEach(p=>total+=p.length);
+  const out=new Uint8Array(total); let pos=0; parts.forEach(p=>{ out.set(p,pos); pos+=p.length; }); return out;
+}
+function colRef(n){ let s=''; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+function cX(r,c,val,style){ const ref=colRef(c)+r,s=style?` s="${style}"`:''; if(typeof val==='number'&&isFinite(val)) return `<c r="${ref}"${s}><v>${val}</v></c>`; const t=esc(val); if(t==='') return `<c r="${ref}"${s}/>`; return `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${t}</t></is></c>`; }
+function sheetXml(rows){ let body=''; rows.forEach((row,ri)=>{ let cells=''; row.forEach((cl,ci)=>{ const val=(cl&&typeof cl==='object')?cl.v:cl; const st=(cl&&typeof cl==='object')?cl.s:0; cells+=cX(ri+1,ci,val,st); }); body+=`<row r="${ri+1}">${cells}</row>`; });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="12"/><col min="2" max="2" width="44"/><col min="3" max="3" width="16"/><col min="4" max="4" width="16"/><col min="5" max="5" width="10"/><col min="6" max="6" width="12"/></cols><sheetData>${body}</sheetData></worksheet>`; }
+function buildXlsx(sheetName,rows){
+  const ct=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+  const rels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const wbr=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+  const wb=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${esc(sheetName).slice(0,31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FFC8102E"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFBFBFBF"/></left><right style="thin"><color rgb="FFBFBFBF"/></right><top style="thin"><color rgb="FFBFBFBF"/></top><bottom style="thin"><color rgb="FFBFBFBF"/></bottom></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/></cellXfs></styleSheet>`;
+  return zipStore([{name:'[Content_Types].xml',bytes:sB(ct)},{name:'_rels/.rels',bytes:sB(rels)},{name:'xl/workbook.xml',bytes:sB(wb)},{name:'xl/_rels/workbook.xml.rels',bytes:sB(wbr)},{name:'xl/styles.xml',bytes:sB(styles)},{name:'xl/worksheets/sheet1.xml',bytes:sB(sheetXml(rows))}]);
+}
+function fmtFileDate(d){ const p=n=>String(n).padStart(2,'0'); return p(d.getMonth()+1)+'-'+p(d.getDate())+'-'+d.getFullYear(); }
+function cleanVendorName(n){ return String(n||'Order').replace(/\./g,'').replace(/\s+/g,' ').trim(); }
+function downloadExcel(v,day){
+  const now=new Date(), recip=(v.recipients||'').trim()||(state.recipientsGlobal||'').trim();
+  const rows=[];
+  rows.push([{v:'PEPPER LUNCH (NIKU) — '+v.name+' Order',s:2}]);
+  rows.push([{v:'Customer #: 847089',s:0}]);
+  rows.push([{v:'Order day: '+FULL[day]+'        Date: '+fmtDate(now),s:0}]);
+  if(state.userName) rows.push([{v:'Counted by: '+state.userName,s:0}]);
+  if(recip) rows.push([{v:'Email order to: '+recip,s:0}]);
+  rows.push([{v:'Submit by 12 noon the day before delivery (routed Tue & Fri). Qty is in CASE or EACH.',s:0}]);
+  rows.push([]);
+  rows.push([{v:'ITEM',s:1},{v:'PRODUCT NAME',s:1},{v:'BRAND',s:1},{v:'PACK',s:1},{v:'CASE',s:1},{v:'EACH',s:1}]);
+  vendorSections(v).forEach(sec=>{
+    if(sec.name) rows.push([{v:sec.name,s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1}]);
+    sec.items.forEach(it=>{ const q=orderQty(it,day), isCase=it.parUnit!=='loose';
+      rows.push([{v:it.sku||'',s:3},{v:it.name,s:3},{v:it.brand||'',s:3},{v:it.pkg||'',s:3},{v:(isCase&&q?q:''),s:3},{v:(!isCase&&q?q:''),s:3}]); });
+  });
+  const bytes=buildXlsx('ORDER SHEET',rows);
+  const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a'),fn=`${cleanVendorName(v.name)} Order ${fmtFileDate(now)}.xlsx`;
+  a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000); flash('Excel downloaded: '+fn);
+}
+
+/* SETUP */
+function renderSetup(){
+  const host=document.getElementById('tab-setup'); let vend='';
+  state.vendors.forEach((v,vi)=>{
+    let inner='';
+    vendorSections(v).forEach(sec=>{
+      if(sec.name||vendorSections(v).length>1) inner+=`<div class="setsec">${esc(sec.name||'(no section)')}</div>`;
+      sec.items.forEach(it=>{
+        let pars=''; ORDER_DAYS.forEach(d=>{ pars+=`<div class="d"><span>${FULL[d].slice(0,3)}</span><input type="number" min="0" step="any" data-par="${v.id}|${it.id}|${d}" value="${it.pars[d]||0}"></div>`; });
+        inner+=`<div class="itemrow">
+          <div class="top">
+            <input type="text" placeholder="SKU" data-f="sku" data-i="${v.id}|${it.id}" value="${esc(it.sku||'')}">
+            <input type="text" placeholder="Item name" data-f="name" data-i="${v.id}|${it.id}" value="${esc(it.name||'')}">
+            <input type="text" placeholder="Pack" data-f="pkg" data-i="${v.id}|${it.id}" value="${esc(it.pkg||'')}">
+            <input type="number" min="1" step="any" title="Units per case" placeholder="/case" data-f="perCase" data-i="${v.id}|${it.id}" value="${it.perCase||1}">
+            <label class="prot"><input type="checkbox" data-f="protein" data-i="${v.id}|${it.id}" ${it.protein?'checked':''}> protein</label>
+            <button class="x" data-delitem="${v.id}|${it.id}" title="Delete item">✕</button>
+          </div>
+          <div class="ctrlline">
+            <span>Section:<input class="sec" type="text" data-f="section" data-i="${v.id}|${it.id}" value="${esc(it.section||'')}" placeholder="(none)"></span>
+            <span>Par in:<select data-f="parUnit" data-i="${v.id}|${it.id}"><option value="case"${it.parUnit==='case'?' selected':''}>Case</option><option value="loose"${it.parUnit==='loose'?' selected':''}>Loose unit</option></select></span>
+            <span>Loose unit name:<input class="un" type="text" data-f="unit" data-i="${v.id}|${it.id}" value="${esc(it.unit||'')}" placeholder="bag"></span>
+          </div>
+          <div class="parlabel">Par (target on hand, in the “Par in” unit) by order day:</div>
+          <div class="parwk">${pars}</div>
+        </div>`;
+      });
+    });
+    vend+=`<details class="vedit"${vi===0?' open':''}>
+      <summary>${esc(v.name)} <span style="font-weight:400;color:var(--muted);font-size:12px">(${v.items.length} items · ${v.method})</span></summary>
+      <div class="inner">
+        <div class="row" style="gap:12px">
+          <div class="field" style="flex:1;min-width:160px"><label>Vendor name</label><input data-vf="name" data-v="${v.id}" value="${esc(v.name)}"></div>
+          <div class="field" style="min-width:170px"><label>Output method</label>
+            <select data-vf="method" data-v="${v.id}"><option value="web"${v.method==='web'?' selected':''}>Web portal (list to type in)</option><option value="excel"${v.method==='excel'?' selected':''}>Excel form (auto-generated)</option><option value="text"${v.method==='text'?' selected':''}>Text / email body</option></select></div>
+        </div>
+        <div class="field"><label>Recipient emails for this vendor (comma-separated) — overrides default</label><input data-vf="recipients" data-v="${v.id}" value="${esc(v.recipients||'')}" placeholder="orders@vendor.com, manager@store.com"></div>
+        <div class="field"><label>Note (shown on Orders tab)</label><input data-vf="note" data-v="${v.id}" value="${esc(v.note||'')}"></div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin:6px 0">ITEMS (grouped by section, shown alphabetically)</div>
+        ${inner}
+        <div class="row" style="margin-top:8px">
+          <button class="btn ghost sm" data-additem="${v.id}">+ Add item</button>
+          <button class="btn ghost sm" data-fillpar="${v.id}">⇄ Copy Tue par → Thu &amp; Fri</button>
+          <button class="btn sm" style="background:#991b1b" data-delvendor="${v.id}">Delete vendor</button>
+        </div>
+      </div></details>`;
+  });
+  host.innerHTML=`
+  <div class="card"><div class="setup-sec"><h3>Store locations</h3><div class="sub">Chosen on the start screen and shown at the top of every page.</div>
+    <div id="locList">${state.locations.map(l=>`<div class="row" style="margin-bottom:6px"><input data-locname="${esc(l.id)}" value="${esc(l.name)}" style="flex:1;min-width:160px;padding:8px;border:1px solid var(--line);border-radius:8px">${state.locations.length>1?`<button class="x" data-locdel="${esc(l.id)}" title="Delete location">✕</button>`:''}</div>`).join('')}</div>
+    <button class="btn ghost sm" id="addLoc" style="margin-top:6px">+ Add location</button></div></div>
+  ${syncEnabled()?`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">This app is connected to your shared cloud database — everyone using it sees the same live data per location.</div>
+    <div class="field"><label>Store passcode (staff enter this once per device)</label><input id="passInput" value="${esc(SYNC.passcode||'')}" placeholder="e.g. 1234" inputmode="numeric"></div>
+    <div class="hint" style="padding:0">Leave blank for no passcode. Changing it will prompt everyone to re-enter on their next open.</div></div></div>`:`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Not connected. This copy runs offline (data stays on this device). Add your Firebase config to the file to enable shared sync.</div></div></div>`}
+  <div class="card"><div class="setup-sec"><h3>Default recipients</h3><div class="sub">Used for any vendor without its own recipients.</div><div class="field"><input id="globalRecip" value="${esc(state.recipientsGlobal||'')}" placeholder="manager@store.com, owner@store.com"></div></div></div>
+  <div class="card"><div class="setup-sec"><h3>Vendors, items &amp; par levels</h3>
+    <div class="sub">Par = target on hand for that day, in each item's chosen unit (Case or a loose unit like bottle/bag/jar). Order = par − on hand (cases and loose combine via units-per-case). Every item is always counted, even at 0.</div>
+    ${vend}<div class="row" style="margin-top:10px"><button class="btn" id="addVendor">+ Add vendor</button></div></div></div>
+  <div class="card"><div class="setup-sec"><h3>Backup &amp; restore</h3><div class="sub">Your data lives in this browser only. Export a file to back up or move to another device.</div>
+    <div class="row"><button class="btn gray" id="exportBtn">⬇️ Export backup (.json)</button><button class="btn ghost" id="importBtn">⬆️ Import backup</button><input type="file" id="importFile" accept="application/json" style="display:none"><button class="btn ghost" id="resetBtn" style="margin-left:auto;color:#991b1b">Reset to defaults</button></div></div></div>
+  <div style="height:30px"></div>`;
+
+  document.getElementById('globalRecip').addEventListener('input',e=>{ state.recipientsGlobal=e.target.value; save(); });
+  host.querySelectorAll('[data-locname]').forEach(el=>el.addEventListener('input',()=>{ const l=state.locations.find(x=>x.id===el.dataset.locname); if(l){ l.name=el.value; save(); } }));
+  host.querySelectorAll('[data-locdel]').forEach(b=>b.addEventListener('click',()=>{ if(state.locations.length<=1) return; const id=b.dataset.locdel; if(confirm('Delete this location?')){ state.locations=state.locations.filter(x=>x.id!==id); if(state.locationId===id) state.locationId=state.locations[0].id; save(); renderSetup(); } }));
+  document.getElementById('addLoc').addEventListener('click',()=>{ state.locations.push({id:uid(),name:'New Location'}); save(); renderSetup(); });
+  var passEl=document.getElementById('passInput');
+  if(passEl) passEl.addEventListener('input',()=>{ SYNC.passcode=passEl.value.trim(); try{ localStorage.setItem(PASS_KEY,SYNC.passcode); }catch(e){} if(SYNC.indexRef) SYNC.indexRef.set({passcode:SYNC.passcode},{merge:true}).catch(()=>{}); });
+  host.querySelectorAll('[data-vf]').forEach(el=>{ const fn=()=>{ state.vendors.find(x=>x.id===el.dataset.v)[el.dataset.vf]=el.value; save(); }; el.addEventListener('input',fn); el.addEventListener('change',fn); });
+  host.querySelectorAll('[data-i]').forEach(el=>{ const fn=()=>{
+    const [vid,iid]=el.dataset.i.split('|'),it=state.vendors.find(x=>x.id===vid).items.find(x=>x.id===iid),f=el.dataset.f;
+    if(f==='protein') it.protein=el.checked; else if(f==='perCase') it.perCase=Math.max(1,Number(el.value)||1); else it[f]=el.value; save(); };
+    el.addEventListener('input',fn); el.addEventListener('change',fn); });
+  host.querySelectorAll('[data-par]').forEach(el=>el.addEventListener('input',()=>{ const [vid,iid,dk]=el.dataset.par.split('|'); state.vendors.find(x=>x.id===vid).items.find(x=>x.id===iid).pars[dk]=Number(el.value)||0; save(); }));
+  host.querySelectorAll('[data-delitem]').forEach(b=>b.addEventListener('click',()=>{ const [vid,iid]=b.dataset.delitem.split('|'),v=state.vendors.find(x=>x.id===vid); v.items=v.items.filter(x=>x.id!==iid); save(); renderSetup(); }));
+  host.querySelectorAll('[data-additem]').forEach(b=>b.addEventListener('click',()=>{ state.vendors.find(x=>x.id===b.dataset.additem).items.push(mk('','NEW ITEM','',0)); save(); renderSetup(); }));
+  host.querySelectorAll('[data-fillpar]').forEach(b=>b.addEventListener('click',()=>{ const v=state.vendors.find(x=>x.id===b.dataset.fillpar); v.items.forEach(it=>{ const t=it.pars.tue||0; it.pars.thu=t; it.pars.fri=t; }); save(); renderSetup(); flash('Copied Tuesday pars to Thu & Fri'); }));
+  host.querySelectorAll('[data-delvendor]').forEach(b=>b.addEventListener('click',()=>{ const v=state.vendors.find(x=>x.id===b.dataset.delvendor); if(confirm('Delete vendor "'+v.name+'" and all its items?')){ state.vendors=state.vendors.filter(x=>x.id!==v.id); save(); renderSetup(); }}));
+  document.getElementById('addVendor').addEventListener('click',()=>{ state.vendors.push({id:uid(),name:'New Vendor',method:'text',recipients:'',note:'',items:[mk('','NEW ITEM','',0)]}); save(); renderSetup(); });
+  document.getElementById('exportBtn').addEventListener('click',exportBackup);
+  document.getElementById('importBtn').addEventListener('click',()=>document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change',importBackup);
+  document.getElementById('resetBtn').addEventListener('click',()=>{ if(confirm('Reset ALL data to defaults? This erases your items, pars, and counts.')){ state=seedConfig(); counts={}; save(); renderSetup(); }});
+}
+function exportBackup(){ const data=JSON.stringify({config:state,counts,history,exported:new Date().toISOString()},null,2); const blob=new Blob([data],{type:'application/json'}),a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='pepper_lunch_inventory_backup.json'; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000); flash('Backup exported'); }
+function importBackup(e){ const file=e.target.files[0]; if(!file) return; const r=new FileReader(); r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.config){ state=o.config; counts=o.counts||{}; history=o.history||[]; save(); flash('Backup imported'); renderSetup(); } else alert('Not a valid backup file.'); }catch(err){ alert('Could not read file.'); } }; r.readAsText(file); e.target.value=''; }
+
+/* USAGE-BASED PAR SUGGESTIONS (no AI — estimates consumption between saved counts) */
+function analyzeSuggestions(){
+  const snaps=history.slice().sort((a,b)=>a.ts<b.ts?-1:(a.ts>b.ts?1:0));
+  const series={};
+  snaps.forEach(s=>s.vendors.forEach(v=>v.items.forEach(it=>{
+    const key=v.name+'|'+(it.sku||it.name);
+    (series[key]=series[key]||[]).push({oh:Number(it.ohUnits)||0, order:Number(it.order)||0, name:it.name, vendorName:v.name});
+  })));
+  const out=[];
+  Object.keys(series).forEach(key=>{
+    const arr=series[key]; if(arr.length<2) return;
+    const usages=[];
+    for(let i=1;i<arr.length;i++){ const u=(arr[i-1].oh+arr[i-1].order)-arr[i].oh; if(isFinite(u)&&u>=0) usages.push(u); }
+    if(!usages.length) return;
+    const maxU=Math.max(...usages), avgU=usages.reduce((a,b)=>a+b,0)/usages.length;
+    const parts=key.split('|'), vn=parts[0], idkey=parts.slice(1).join('|');
+    const v=state.vendors.find(x=>x.name===vn); if(!v) return;
+    const it=v.items.find(x=>(x.sku||x.name)===idkey); if(!it) return;
+    const suggested=Math.max(0,Math.round(maxU*1.1*100)/100);
+    out.push({itemId:it.id, vendorName:v.name, name:it.name, unit:parULabel(it), currentPar:it.pars.tue||0, cycles:usages.length, avgU:Math.round(avgU*10)/10, maxU:Math.round(maxU*10)/10, suggested});
+  });
+  return out.sort((a,b)=>a.vendorName.localeCompare(b.vendorName)||a.name.localeCompare(b.name));
+}
+function applySug(itemId,val){ const it=findItem(itemId).it; if(!it) return; ORDER_DAYS.forEach(d=>it.pars[d]=val); }
+function showSuggestions(){
+  const box=document.getElementById('suggBox'); const list=analyzeSuggestions();
+  if(!list.length){ box.innerHTML='<div class="empty" style="padding:14px">Not enough data yet. Save at least <b>2 inventories</b> on different days — the app will estimate how much you use between counts and suggest par levels.</div>'; return; }
+  const rows=list.map(s=>{ const changed=Math.abs(s.suggested-s.currentPar)>0.001;
+    return `<tr><td>${esc(s.name)}<div class="sku">${esc(s.vendorName)} · ${s.cycles} cycle${s.cycles>1?'s':''}</div></td>
+    <td class="num">${s.currentPar} ${esc(s.unit)}</td><td class="num">${s.avgU}</td><td class="num">${s.maxU}</td>
+    <td class="num"><b style="color:${changed?'var(--red)':'var(--muted)'}">${s.suggested} ${esc(s.unit)}</b></td>
+    <td class="num"><button class="btn sm ${changed?'':'ghost'}" data-applysug="${s.itemId}|${s.suggested}">Apply</button></td></tr>`; }).join('');
+  box.innerHTML=`<div class="hint" style="padding:6px 0 10px">Suggested par = peak usage seen between counts + 10% buffer, from ${history.length} saved inventories. Applying overwrites all 3 order days — review first.</div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Item</th><th class="num">Current par</th><th class="num">Avg use</th><th class="num">Peak use</th><th class="num">Suggested</th><th class="num"></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="applyAllSug">Apply all suggestions</button><span class="hint" style="padding:0">Then fine-tune per day in ⚙️ Setup.</span></div>`;
+  box.querySelectorAll('[data-applysug]').forEach(b=>b.addEventListener('click',()=>{ const [iid,val]=b.dataset.applysug.split('|'); applySug(iid,Number(val)); save(); flash('Par updated'); showSuggestions(); }));
+  document.getElementById('applyAllSug').addEventListener('click',()=>{ list.forEach(s=>applySug(s.itemId,s.suggested)); save(); flash('Applied '+list.length+' par suggestions'); showSuggestions(); });
+}
+
+/* HISTORY */
+function renderHistory(){
+  const host=document.getElementById('tab-history');
+  let html='<div class="card"><div class="setup-sec"><h3>💡 Suggested par levels</h3><div class="sub">No AI needed — this looks at how much stock dropped between your saved counts (usage) and suggests pars that cover your busiest cycle.</div><button class="btn sm" id="genSug">Generate suggestions</button><div id="suggBox" style="margin-top:6px"></div></div></div>';
+  if(!history.length){ html+='<div class="card"><div class="empty">No saved inventories yet.<br><br>On the 📦 Orders tab, tap <b>“Save this inventory”</b> to archive a snapshot here.</div></div>'; host.innerHTML=html; document.getElementById('genSug').addEventListener('click',showSuggestions); return; }
+  html+='<div class="card"><div class="setup-sec"><h3>Saved inventories</h3><div class="sub">Every time you save on the Orders tab, a full snapshot (counts + order) is stored here.</div></div></div>';
+  history.forEach((s,idx)=>{
+    const totOrder=s.vendors.reduce((a,v)=>a+(v.toOrder||0),0);
+    let body='';
+    s.vendors.forEach(v=>{
+      if(!v.items||!v.items.length) return;
+      body+=`<div class="osec">${esc(v.name)} — ${v.toOrder||0} to order</div><table class="histtbl"><tr><th>Item</th><th class="num">On hand</th><th class="num">Order</th></tr>`;
+      v.items.forEach(it=>{ body+=`<tr class="${it.order>0?'toorder':''}"><td>${esc(it.name)}</td><td class="num">${esc(it.have)}</td><td class="num">${it.order>0?'<b>'+it.order+' '+esc(it.unit)+'</b>':'—'}</td></tr>`; });
+      body+='</table>';
+    });
+    html+=`<div class="card"><div class="vhead" data-htoggle="${idx}" style="cursor:pointer">
+        <div><h2 style="font-size:15px">${esc(s.dateStr)}</h2><div class="meta">${esc(FULL[s.day]||s.day)} · ${esc(s.timeStr||'')}${s.name?' · 👤 '+esc(s.name):''} · <b style="color:var(--red)">${totOrder} to order</b></div></div>
+        <button class="btn sm ghost" data-hdel="${idx}" style="margin-left:auto">Delete</button><span class="chev">▾</span></div>
+      <div class="hbody" style="display:none;padding:12px 14px">${body||'<div class="empty">Nothing recorded.</div>'}</div></div>`;
+  });
+  host.innerHTML=html;
+  document.getElementById('genSug').addEventListener('click',showSuggestions);
+  host.querySelectorAll('[data-htoggle]').forEach(h=>h.addEventListener('click',e=>{ if(e.target.closest('[data-hdel]')) return; const b=h.parentElement.querySelector('.hbody'); const open=b.style.display!=='none'; b.style.display=open?'none':''; h.querySelector('.chev').style.transform=open?'rotate(-90deg)':''; }));
+  host.querySelectorAll('[data-hdel]').forEach(b=>b.addEventListener('click',()=>{ if(confirm('Delete this saved inventory?')){ history.splice(Number(b.dataset.hdel),1); save(); renderHistory(); }}));
+}
+
+function switchTab(t){ ui.tab=t; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t)); ['count','orders','history','setup'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none'); if(t==='count') renderCount(); else if(t==='orders') renderOrders(); else if(t==='history') renderHistory(); else renderSetup(); }
+
+/* ============================================================ CLOUD SYNC ENGINE ============================================================ */
+let pushTimer=null;
+function schedulePush(){ if(!SYNC.on) return; clearTimeout(pushTimer); pushTimer=setTimeout(pushConfig,600); }
+function syncErr(){ setSyncChip('err'); }
+function setSyncChip(s){ const c=document.getElementById('syncChip'),t=document.getElementById('syncTxt'); if(!c) return; c.style.display=syncEnabled()?'':'none'; c.classList.remove('on','err'); if(s==='on'){ c.classList.add('on'); t.textContent='Synced'; } else if(s==='err'){ c.classList.add('err'); t.textContent='Sync error'; } else t.textContent='Connecting…'; }
+function pushConfig(){ if(!SYNC.on||!SYNC.storeRef) return;
+  SYNC.storeRef.set({vendors:state.vendors, recipientsGlobal:state.recipientsGlobal||'', history:history},{merge:true}).catch(syncErr);
+  if(SYNC.indexRef) SYNC.indexRef.set({locations:state.locations},{merge:true}).catch(()=>{}); }
+function pushCount(id){ if(!SYNC.on||!SYNC.storeRef) return; const o={}; o['counts.'+id]=cell(id); SYNC.storeRef.update(o).catch(()=>SYNC.storeRef.set({counts:{[id]:cell(id)}},{merge:true}).catch(syncErr)); }
+function pushCountsClear(){ if(!SYNC.on||!SYNC.storeRef) return; SYNC.storeRef.update({counts:{}}).catch(syncErr); }
+function isTypingIn(tabId){ const a=document.activeElement; const host=document.getElementById(tabId); return a&&host&&host.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName); }
+function applyRemoteStore(data, own){ if(!data) return; SYNC.applying=true;
+  if(Array.isArray(data.vendors)) state.vendors=data.vendors;
+  if(typeof data.recipientsGlobal==='string') state.recipientsGlobal=data.recipientsGlobal;
+  if(Array.isArray(data.history)) history=data.history;
+  if(data.counts&&typeof data.counts==='object') counts=data.counts;
+  try{ localStorage.setItem(STORE_KEY,JSON.stringify({config:state,counts,history})); }catch(e){}
+  SYNC.applying=false;
+  if(document.getElementById('appScreen').style.display==='none') return;
+  // refresh UI. Count-tab uses in-place total refresh so a live update never clears
+  // the boxes someone is typing into. Setup skips re-render while a field is focused.
+  if(ui.tab==='count'){ try{ refreshAllTotals(); }catch(e){ renderCount(); } }
+  else if(ui.tab==='orders') renderOrders();
+  else if(ui.tab==='history') renderHistory();
+  else if(ui.tab==='setup'){ if(!(own||isTypingIn('tab-setup'))) renderSetup(); } }
+function applyRemoteIndex(data){ if(!data) return;
+  if(Array.isArray(data.locations)&&data.locations.length){ state.locations=data.locations; if(!state.locations.some(l=>l.id===state.locationId)) state.locationId=state.locations[0].id; }
+  SYNC.passcode=(data.passcode!=null?String(data.passcode):'');
+  if(needGate()&&document.getElementById('gateScreen').style.display==='none'&&document.getElementById('appScreen').style.display==='none') showGate(); }
+function refreshAllTotals(){ const host=document.getElementById('tab-count'); if(!host) return; let ok=true;
+  state.vendors.forEach(v=>v.items.forEach(it=>{ const h=host.querySelector('[data-have="'+it.id+'"]'); if(!h){ ok=false; return; } h.textContent=haveText(it);
+    const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('tr').classList.toggle('toorder',q>0); } }));
+  if(!ok){ renderCount(); return; }
+  state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m){ const n=toOrderCount(v,ui.day); m.innerHTML=`${v.items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; } }); }
+function locDocId(){ return 'loc_'+(state.locationId||'default'); }
+let resubTimer=null;
+function scheduleResub(){ if(!SYNC.on) return; clearTimeout(resubTimer); resubTimer=setTimeout(()=>{ if(SYNC.on) subscribeLocation(); }, 4000); }
+function subscribeLocation(){ if(!SYNC.on) return;
+  SYNC.unsub.forEach(u=>{try{u();}catch(e){}}); SYNC.unsub=[];
+  if(SYNC.indexRef){ const ui2=SYNC.indexRef.onSnapshot(s=>{ if(s.exists) applyRemoteIndex(s.data()); },()=>{}); SYNC.unsub.push(ui2); }
+  SYNC.storeRef=SYNC.db.collection('stores').doc(locDocId());
+  const u1=SYNC.storeRef.onSnapshot(snap=>{ setSyncChip('on'); if(snap.exists) applyRemoteStore(snap.data(), snap.metadata.hasPendingWrites); else if(!snap.metadata.hasPendingWrites) pushConfig(); }, err=>{ setSyncChip('err'); scheduleResub(); });
+  SYNC.unsub.push(u1); }
+function initSync(){ if(!syncEnabled()) return false;
+  try{ firebase.initializeApp(FIREBASE_CONFIG); SYNC.db=firebase.firestore(); SYNC.db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+    SYNC.on=true; SYNC.indexRef=SYNC.db.collection('stores').doc('_index'); setSyncChip('connecting'); return true;
+  }catch(e){ SYNC.on=false; return false; } }
+/* passcode gate */
+const PASS_KEY='pepperlunch_passok';
+function needGate(){ return SYNC.on && SYNC.passcode && localStorage.getItem(PASS_KEY)!==SYNC.passcode; }
+function showGate(){ document.getElementById('gateScreen').style.display=''; document.getElementById('startScreen').style.display='none'; document.getElementById('appScreen').style.display='none'; const inp=document.getElementById('gateInput'); inp.value=''; setTimeout(()=>inp.focus(),120); }
+function tryUnlock(){ const inp=document.getElementById('gateInput'),err=document.getElementById('gateErr');
+  if(String(inp.value)===String(SYNC.passcode)&&SYNC.passcode){ try{ localStorage.setItem(PASS_KEY,SYNC.passcode); }catch(e){} document.getElementById('gateScreen').style.display='none'; showStart(); }
+  else { err.textContent='Incorrect passcode'; inp.value=''; inp.focus(); } }
+
+/* ---------- boot ---------- */
+load(); startClock();
+if(initSync()){ subscribeLocation(); setTimeout(()=>{ if(needGate()) showGate(); else if(document.getElementById('appScreen').style.display==='none') showStart(); }, 900); }
+else showStart();
+document.getElementById('goSetup').addEventListener('click',()=>{ if(!ui.day) ui.day=ORDER_DAYS[0]; enterApp(ui.day); switchTab('setup'); });
+document.getElementById('daychip').addEventListener('click',showStart);
+document.getElementById('locLabel').addEventListener('click',showStart);
+document.getElementById('gateBtn').addEventListener('click',tryUnlock);
+document.getElementById('gateInput').addEventListener('keydown',e=>{ if(e.key==='Enter') tryUnlock(); });
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+</script>
+</body>
+</html>
