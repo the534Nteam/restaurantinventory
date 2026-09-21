@@ -1,0 +1,5 @@
+# Only needed if you deploy with the Cloudflare CLI (npx wrangler deploy).
+# Pasting worker.js into the Cloudflare dashboard needs no config at all.
+name = "pagefeed"
+main = "worker.js"
+compatibility_date = "2026-09-01"

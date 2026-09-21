@@ -1,0 +1,13 @@
+{
+  "name": "pagefeed",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Turn any web page into an RSS feed. One file, no dependencies.",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/pagefeed.test.mjs",
+    "deploy": "wrangler deploy"
+  }
+}
