@@ -1,0 +1,50 @@
+rules_version = '2';
+// Pepper Lunch Inventory security rules. Paste this whole file into
+// Firebase console > Firestore Database > Rules, then click Publish.
+//
+// Every phone signs in anonymously. A phone becomes a member by writing the
+// store passcode into members/<its id>; the rules compare it against
+// settings/passcode, which no one can read. Change the passcode and every
+// existing member loses access until they enter the new one.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function passcode() {
+      return get(/databases/$(database)/documents/settings/passcode).data.code;
+    }
+    function isMember() {
+      let m = /databases/$(database)/documents/members/$(request.auth.uid);
+      return request.auth != null && exists(m) && get(m).data.code == passcode();
+    }
+    function goodCode(c) {
+      return c is string && c.matches('[0-9]{6,12}');
+    }
+
+    match /stores/{doc=**} {
+      allow read, write: if isMember();
+    }
+
+    match /members/{uid} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['code', 'name', 'at'])
+        && request.resource.data.code == getAfter(/databases/$(database)/documents/settings/passcode).data.code;
+    }
+
+    match /settings/passcode {
+      allow read: if false;
+      // The first passcode can be set once, by anyone signed in, before one exists.
+      allow create: if request.auth != null && goodCode(request.resource.data.code)
+        && request.resource.data.keys().hasOnly(['code']);
+      allow update: if isMember() && goodCode(request.resource.data.code)
+        && request.resource.data.keys().hasOnly(['code']);
+    }
+
+    match /settings/status {
+      allow read: if true;
+      allow create: if request.auth != null
+        && existsAfter(/databases/$(database)/documents/settings/passcode)
+        && request.resource.data.keys().hasOnly(['passcodeSet']);
+    }
+  }
+}

@@ -1,79 +1,78 @@
-# Cloud Sync Setup (Firebase) — Pepper Lunch Inventory
+# Going live: Pepper Lunch Inventory
 
-The app already has all the sync code built in. It runs **offline** until you paste your
-Firebase project keys into `index.html`. Once configured and hosted, every phone/computer
-opening the link shares one live inventory **per store location**.
+The Firebase project (`pepper-lunch-inventory`) is already connected in `index.html`.
+These four steps put the app on a real web address and lock the database so only
+phones with the store passcode can see or change anything. About 10 minutes, all
+clicking, no code.
 
-Total time: ~15 minutes. No coding required — just copy/paste.
+Do them in this order, in one sitting. Until step 3 is done the database is open
+to anyone who finds it.
 
 ---
 
-## Step 1 — Create a free Firebase project
-1. Go to **https://console.firebase.google.com** and sign in with a Google account.
-2. Click **Add project** → name it e.g. `pepper-lunch-inventory` → Continue.
-3. Google Analytics: **not needed** — turn it off → Create project.
+## Step 1: Turn on GitHub Pages (the web address)
+1. Go to **github.com/the534Nteam/restaurantinventory** and click **Settings**.
+2. Click **Pages** in the left menu.
+3. Under **Branch**, pick **main**, leave the folder as **/ (root)**, and click **Save**.
+4. After a minute or two, refresh. The page shows the link:
+   **https://the534nteam.github.io/restaurantinventory/**
 
-## Step 2 — Create the database
-1. In the left menu: **Build → Firestore Database** → **Create database**.
-2. Location: pick the closest region (for Hawaii, `us-west1` or `nam5`). 
-3. Start in **Production mode** → Enable.
-4. Open the **Rules** tab, replace everything with this, then **Publish**:
+From now on, every change pushed to `main` goes live on that link by itself.
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /stores/{doc=**} {
-      allow read, write: if true;
-    }
-  }
-}
-```
-> Note: these rules let anyone with the link read/write. The app's **store passcode**
-> keeps casual users out. If you want stronger security later, I can add anonymous
-> sign-in so only the app can touch the data — just ask.
+## Step 2: Turn on anonymous sign-in
+1. Go to **https://console.firebase.google.com** and open **pepper-lunch-inventory**.
+2. Left menu: **Build > Authentication**. If it asks, click **Get started**.
+3. Open the **Sign-in method** tab, click **Anonymous**, switch it **on**, and **Save**.
+4. Open the **Settings** tab > **Authorized domains** > **Add domain** and add
+   `the534nteam.github.io`.
 
-## Step 3 — Get your web config
-1. Click the **gear icon → Project settings**.
-2. Scroll to **Your apps** → click the **`</>`** (Web) icon.
-3. Nickname it `inventory` → **Register app** (skip Hosting for now).
-4. It shows a `const firebaseConfig = { ... }` block. **Copy those 6 values.**
+Staff never see a login. Each phone gets an invisible ID that the database uses
+to remember it entered the passcode.
 
-## Step 4 — Put the config in the app
-Open `index.html` and find this near the top of the script (search for `FIREBASE_CONFIG`):
+## Step 3: Publish the security rules
+1. Left menu: **Build > Firestore Database**, then the **Rules** tab.
+2. Delete everything in the box.
+3. Open `firestore.rules` in this repo on GitHub, click the copy button, and paste
+   it into the box.
+4. Click **Publish**.
 
-```js
-const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
-};
-```
-Paste your values between the quotes. **Or just send me the 6 values and I'll paste them in.**
+## Step 4: Set the store passcode
+1. Right after publishing, open the app link yourself.
+2. It asks you to **choose a store passcode**. Use 6 or more digits. 8 is better.
+   The first passcode entered becomes the store passcode, which is why you do this
+   right away.
+3. Give staff the link and the passcode. Each phone enters it once.
 
-## Step 5 — Host the file (free)
-The synced app must live at a real web address (the claude.ai preview link can't run sync).
-Easiest option — **Netlify Drop** (no account, no CLI):
-1. Go to **https://app.netlify.com/drop**
-2. Drag `index.html` onto the page.
-3. It gives you a URL like `https://random-name.netlify.app` — that's your app.
-   (Rename it in Site settings if you like.)
+To change the passcode later: **Setup > Cloud sync > Change passcode**. Every
+other phone gets signed out and asks for the new one. Do this when someone leaves.
 
-Alternatives: **Firebase Hosting** (you already have the project), **GitHub Pages**,
-or **Cloudflare Pages**. Any static host works.
+## Put it on each phone's home screen
+* **iPhone:** open the link in Safari, tap **Share**, then **Add to Home Screen**.
+* **Android:** open the link in Chrome, tap the **⋮** menu, then **Add to Home screen**
+  (or **Install app**).
 
-## Step 6 — Set the store passcode
-1. Open your hosted app → pick **Moanalua** → your name → a day → **⚙️ Setup**.
-2. Under **Cloud sync**, type a **Store passcode** (e.g. `1234`).
-3. Share the hosted link + passcode with staff. Each device enters it once.
+It opens full screen with the PL icon, like a regular app.
 
-## Done
-Everyone on the link now shares the same live inventory for each location. Counts,
-pars, history, and suggestions all sync in real time and keep working offline
-(catching up when the phone reconnects).
+---
 
-To add a second store later: Setup → Store locations → Add. Each store keeps its own
-shared data automatically.
+## How the data is stored
+* `stores/_index`: the list of store locations.
+* `stores/loc_<id>`: one location's vendors, items, pars, counts and daily sales.
+* `stores/loc_<id>/history/...`: one document per saved inventory. Older versions kept
+  every saved inventory inside the location record, which would have hit Firestore's
+  1 MB limit after roughly 80 saves. The app moves old saves over by itself the first
+  time it opens.
+* `members/<phone id>`: phones that entered the passcode.
+* `settings/passcode`: the passcode. The rules block anyone from reading it.
+
+Setup changes go up one field at a time, and only the fields that changed, so two
+people editing different settings at once don't overwrite each other. Counts and
+daily sales go up one item or one day at a time.
+
+## Troubleshooting
+* **Header says "Synced (unsecured)":** step 2 or step 3 isn't done yet.
+* **Header says "Sync error" after step 2:** check that `the534nteam.github.io` is in
+  Authorized domains. If the API key has website restrictions in Google Cloud
+  console, add `https://the534nteam.github.io/*` there too.
+* **Locked out of every phone:** in Firebase console > Firestore > Data, delete the
+  `settings` collection. The next person to open the app picks a new passcode.

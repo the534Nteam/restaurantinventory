@@ -3,8 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c8102e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PL Inventory">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="2">
+<meta name="app-build" content="3">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -142,6 +150,7 @@
 </head>
 <body>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <!-- ============ PASSCODE GATE (only when cloud sync is configured) ============ -->
@@ -221,7 +230,7 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "50685384814",
   appId: "1:50685384814:web:ab9fcc66c22317b1e22e7f"
 };
-let SYNC = { on:false, db:null, storeRef:null, indexRef:null, unsub:[], applying:false };
+let SYNC = { on:false, db:null, uid:null, secure:false, storeRef:null, histRef:null, indexRef:null, unsub:[], applying:false, passcode:'', last:{} };
 function syncEnabled(){ return typeof firebase!=='undefined' && FIREBASE_CONFIG.apiKey; }
 
 /* Random ids so two devices adding items at the same moment can't collide. */
@@ -380,13 +389,15 @@ function migrate(){
   if(typeof state.autoPar!=='boolean') state.autoPar=true;
   if(!(Number(state.coverDays)>0)) state.coverDays=DEFAULT_COVER_DAYS;
   (state.vendors||[]).forEach(v=>{ if(v.customerNo===undefined&&v.method==='excel'&&/hata/i.test(v.name||'')){ v.customerNo='847089'; v.sheetNote='Submit by 12 noon the day before delivery (routed Tue & Fri). Qty is in CASE or EACH.'; } });
-  invalidateModel(); }
+  (history||[]).forEach(snapId); invalidateModel(); }
+function snapId(s){ if(s&&!s.id) s.id='h'+String(s.ts||Date.now()).replace(/\D/g,''); return s; }
 function persistLocal(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify({config:state,counts,history,sales,byLoc})); }catch(e){} }
 function save(){ invalidateModel(); persistLocal(); if(SYNC.on&&!SYNC.applying) schedulePush(); }
 function switchLocation(newId){ if(!newId||newId===state.locationId) return;
+  if(SYNC.ready){ clearTimeout(pushTimer); pushConfig(); }
   byLoc[state.locationId]={counts,history,sales};
   const d=byLoc[newId]||{}; counts=d.counts||{}; history=d.history||[]; sales=d.sales||{}; delete byLoc[newId];
-  state.locationId=newId; invalidateModel(); }
+  state.locationId=newId; invalidateModel(); if(SYNC.ready) subscribeLocation(); }
 
 /* In-page confirm: the claude.ai viewer blocks window.confirm(), so ask inside the page. */
 function askConfirm(msg,yesLabel,onYes){ const box=document.getElementById('askBox');
@@ -496,7 +507,7 @@ function enterApp(dayKey){ ui.day=dayKey;
   const nameIn=document.getElementById('nameInput'); if(nameIn){ state.userName=nameIn.value.trim(); } save();
   const loc=state.locations.find(l=>l.id===state.locationId)||state.locations[0];
   const locLabel=document.getElementById('locLabel'); if(locLabel) locLabel.textContent='📍 '+(loc?loc.name:'—');
-  if(SYNC.on && SYNC.storeRef && SYNC.storeRef.id!==locDocId()) subscribeLocation();
+  if(SYNC.ready && SYNC.storeRef && SYNC.storeRef.id!==locDocId()) subscribeLocation();
   document.getElementById('startScreen').style.display='none'; document.getElementById('appScreen').style.display='';
   const who=document.getElementById('whoLabel'); if(state.userName){ who.textContent='👤 '+state.userName; who.style.display=''; } else who.style.display='none';
   document.getElementById('chipDay').textContent=FULL[dayKey]; document.getElementById('chipDate').textContent=fmtDate(new Date()).replace(/^\w+,?\s*/,''); switchTab('count'); }
@@ -597,13 +608,13 @@ function renderOrders(){
 }
 function saveSnapshot(){
   const day=ui.day,now=new Date();
-  const snap={ts:now.toISOString(), dateStr:fmtDate(now), timeStr:fmtTime(now), day, name:state.userName||'', vendors:[]};
+  const snap={id:uid(), ts:now.toISOString(), dateStr:fmtDate(now), timeStr:fmtTime(now), day, name:state.userName||'', vendors:[]};
   state.vendors.forEach(v=>{
     const items=v.items.map(it=>({itemId:it.id, name:it.name, sku:it.sku||'', have:haveText(it,'0'), ohUnits:Math.round(onHandParUnit(it)*100)/100, par:effPar(it,day), order:orderQty(it,day), unit:parULabel(it)}));
     const toOrder=items.filter(i=>i.order>0).length;
     snap.vendors.push({name:v.name, method:v.method, toOrder, items});
   });
-  history.unshift(snap); if(history.length>200) history.length=200; save();
+  history.unshift(snap); if(history.length>200) history.length=200; save(); pushSnapshot(snap);
   flash('Inventory saved to History'); switchTab('history');
 }
 function emailOrder(v,day){
@@ -741,9 +752,11 @@ function renderSetup(){
     <label class="row" style="gap:6px">Days of product to keep on hand <input type="number" id="coverIn" min="1" max="21" step="1" value="${coverDays()}" style="width:64px;padding:6px;border:1px solid var(--line);border-radius:6px"></label></div></div></div>
   <div class="card"><div class="setup-sec"><h3>Staff</h3><div class="sub">Names shown in the "Your name" list on the start screen. One per line.</div>
     <div class="field"><textarea id="staffIn" rows="5">${esc((state.staff||[]).join('\n'))}</textarea></div></div></div>
-  ${syncEnabled()?`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">This app is connected to your shared cloud database — everyone using it sees the same live data per location.</div>
+  ${syncEnabled()?(SYNC.secure?`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Connected and secured. The database only lets in devices that entered the store passcode, and everyone sees the same live data per location.</div>
+    <div class="row"><input id="newPass" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New passcode (6+ digits)" style="width:200px;padding:8px;border:1px solid var(--line);border-radius:8px"><button class="btn sm" id="changePass">Change passcode</button></div>
+    <div class="hint" style="padding:6px 0 0">Changing it signs out every other phone. Staff then enter the new passcode once.</div></div></div>`:`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Connected, but the database is not locked down yet. Follow CLOUD-SYNC-SETUP.md (turn on anonymous sign-in and publish the security rules) to secure it.</div>
     <div class="field"><label>Store passcode (staff enter this once per device)</label><input id="passInput" value="${esc(SYNC.passcode||'')}" placeholder="e.g. 1234" inputmode="numeric"></div>
-    <div class="hint" style="padding:0">Leave blank for no passcode. Changing it will prompt everyone to re-enter on their next open.</div></div></div>`:`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Not connected. This copy runs offline (data stays on this device). Add your Firebase config to the file to enable shared sync.</div></div></div>`}
+    <div class="hint" style="padding:0">Leave blank for no passcode. Changing it will prompt everyone to re-enter on their next open.</div></div></div>`):`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Not connected. This copy runs offline (data stays on this device). Add your Firebase config to the file to enable shared sync.</div></div></div>`}
   <div class="card"><div class="setup-sec"><h3>Default recipients</h3><div class="sub">Used for any vendor without its own recipients.</div><div class="field"><input id="globalRecip" value="${esc(state.recipientsGlobal||'')}" placeholder="manager@store.com, owner@store.com"></div></div></div>
   <div class="card"><div class="setup-sec"><h3>Vendors, items &amp; par levels</h3>
     <div class="sub">Par = target on hand for that day, in each item's chosen unit (Case or a loose unit like bottle/bag/jar). Order = par − on hand (cases and loose combine via units-per-case). Every item is always counted, even at 0.</div>
@@ -762,6 +775,7 @@ function renderSetup(){
   document.getElementById('addLoc').addEventListener('click',()=>{ state.locations.push({id:uid(),name:'New Location'}); save(); renderSetup(); });
   var passEl=document.getElementById('passInput');
   if(passEl) passEl.addEventListener('input',()=>{ SYNC.passcode=passEl.value.trim(); try{ localStorage.setItem(PASS_KEY,SYNC.passcode); }catch(e){} if(SYNC.indexRef) SYNC.indexRef.set({passcode:SYNC.passcode},{merge:true}).catch(()=>{}); });
+  const chg=document.getElementById('changePass'); if(chg) chg.addEventListener('click',()=>changePasscode(document.getElementById('newPass').value.trim()));
   host.querySelectorAll('[data-vf]').forEach(el=>{ const fn=()=>{ state.vendors.find(x=>x.id===el.dataset.v)[el.dataset.vf]=el.value; save(); }; el.addEventListener('input',fn); el.addEventListener('change',fn); });
   host.querySelectorAll('select[data-vf="method"]').forEach(el=>el.addEventListener('change',()=>renderSetup()));
   host.querySelectorAll('[data-i]').forEach(el=>{ const fn=()=>{
@@ -785,7 +799,7 @@ function importBackup(e){ const file=e.target.files[0]; if(!file) return; const 
   r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.config){ state=o.config; counts=o.counts||{}; history=o.history||[]; sales=o.sales||{}; byLoc=o.byLoc||{};
       if(!state.locations||!state.locations.length) state.locations=[{id:'moanalua',name:'Moanalua'}];
       if(!state.locationId||!state.locations.some(l=>l.id===state.locationId)) state.locationId=state.locations[0].id;
-      migrate(); save(); pushCountsAll(); flash('Backup imported'); renderSetup(); }
+      migrate(); save(); pushCountsAll(); pushHistoryAll(); flash('Backup imported'); renderSetup(); }
     else flash('That file is not an inventory backup.'); }catch(err){ flash('Could not read that file. Pick a .json backup.'); } };
   r.readAsText(file); e.target.value=''; }
 
@@ -872,75 +886,157 @@ function renderHistory(){
   wireHistoryTop(host);
   host.querySelectorAll('[data-htoggle]').forEach(h=>h.addEventListener('click',e=>{ if(e.target.closest('[data-hdel]')) return; const b=h.parentElement.querySelector('.hbody'); const open=b.style.display!=='none'; b.style.display=open?'none':''; h.querySelector('.chev').style.transform=open?'rotate(-90deg)':''; }));
   host.querySelectorAll('[data-hdel]').forEach(b=>b.addEventListener('click',()=>{ const s=history[Number(b.dataset.hdel)];
-    askConfirm('Delete this saved inventory?','Delete',()=>{ const i=history.indexOf(s); if(i>=0) history.splice(i,1); save(); renderHistory(); }); }));
+    askConfirm('Delete this saved inventory?','Delete',()=>{ const i=history.indexOf(s); if(i>=0) history.splice(i,1); save(); deleteSnapshot(s); renderHistory(); }); }));
 }
 
 function switchTab(t){ ui.tab=t; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t)); ['count','orders','history','setup'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none'); if(t==='count') renderCount(); else if(t==='orders') renderOrders(); else if(t==='history') renderHistory(); else renderSetup(); }
 
-/* ============================================================ CLOUD SYNC ENGINE ============================================================ */
-let pushTimer=null;
+/* ============================================================ CLOUD SYNC ENGINE ============================================================
+   Layout in Firestore:
+     stores/_index                 locations list (+ old-style passcode, only used before the rules are published)
+     stores/loc_<id>               one location's setup, counts and daily sales
+     stores/loc_<id>/history/<id>  one saved inventory per document (keeps the main record far under the 1 MB cap)
+     members/<uid>                 a device that entered the passcode; firestore.rules checks it on every read and write
+     settings/passcode             the store passcode; nobody can read it, the rules compare against it
+     settings/status               {passcodeSet:true} once a passcode exists (readable, so the gate knows what to ask)
+   Setup changes are sent per field, and only the fields that changed, so two people editing
+   different things don't overwrite each other. Daily sales are sent one day at a time. */
+const CONFIG_KEYS=['vendors','recipientsGlobal','staff','autoPar','coverDays'];
+const PASS_KEY='pepperlunch_passok';
+let pushTimer=null,resubTimer=null;
+function ser(v){ return JSON.stringify(v,(k,x)=>k.charAt(0)==='_'?undefined:x); }
+function localVal(k){ return k==='coverDays'?coverDays():k==='autoPar'?!!state.autoPar:k==='recipientsGlobal'?(state.recipientsGlobal||''):k==='staff'?(state.staff||[]):state[k]; }
+function isDirty(k){ return SYNC.last[k]!==undefined && ser(localVal(k))!==SYNC.last[k]; }
 function schedulePush(){ if(!SYNC.on) return; clearTimeout(pushTimer); pushTimer=setTimeout(pushConfig,600); }
-function syncErr(){ setSyncChip('err'); }
-function setSyncChip(s){ const c=document.getElementById('syncChip'),t=document.getElementById('syncTxt'); if(!c) return; c.style.display=syncEnabled()?'':'none'; c.classList.remove('on','err'); if(s==='on'){ c.classList.add('on'); t.textContent='Synced'; } else if(s==='err'){ c.classList.add('err'); t.textContent='Sync error'; } else t.textContent='Connecting…'; }
-function pushConfig(){ if(!SYNC.on||!SYNC.storeRef) return;
-  SYNC.storeRef.set({vendors:state.vendors, recipientsGlobal:state.recipientsGlobal||'', history:history, sales:sales,
-    staff:state.staff||[], autoPar:!!state.autoPar, coverDays:coverDays()},{merge:true}).catch(syncErr);
-  if(SYNC.indexRef) SYNC.indexRef.set({locations:state.locations},{merge:true}).catch(()=>{}); }
-function pushCountsAll(){ if(!SYNC.on||!SYNC.storeRef) return; SYNC.storeRef.update({counts:counts}).catch(()=>SYNC.storeRef.set({counts:counts},{merge:true}).catch(syncErr)); }
-function pushCount(id){ if(!SYNC.on||!SYNC.storeRef) return; const o={}; o['counts.'+id]=cell(id); SYNC.storeRef.update(o).catch(()=>SYNC.storeRef.set({counts:{[id]:cell(id)}},{merge:true}).catch(syncErr)); }
-function pushCountsClear(){ if(!SYNC.on||!SYNC.storeRef) return; SYNC.storeRef.update({counts:{}}).catch(syncErr); }
+function syncErr(e){ if(e&&e.code==='permission-denied') return lostAccess(); setSyncChip('err'); }
+function setSyncChip(s){ const c=document.getElementById('syncChip'),t=document.getElementById('syncTxt'); if(!c) return; c.style.display=syncEnabled()?'':'none'; c.classList.remove('on','err'); if(s==='on'){ c.classList.add('on'); t.textContent=SYNC.secure?'Synced':'Synced (unsecured)'; } else if(s==='err'){ c.classList.add('err'); t.textContent='Sync error'; } else t.textContent='Connecting…'; }
+function storeUpdate(patch){ return SYNC.storeRef.update(patch).catch(e=>{ if(e&&e.code==='not-found'){ const o={}; Object.keys(patch).forEach(k=>{ if(!k.includes('.')) o[k]=patch[k]; }); return SYNC.storeRef.set(o,{merge:true}); } throw e; }); }
+function pushConfig(){ if(!SYNC.on||!SYNC.storeRef||!SYNC.ready||!SYNC.synced) return;
+  const patch={}; let n=0;
+  CONFIG_KEYS.forEach(k=>{ const v=localVal(k),sv=ser(v); if(sv!==SYNC.last[k]){ patch[k]=JSON.parse(sv); SYNC.last[k]=sv; n++; } });
+  const prev=SYNC.lastSales||{},FV=firebase.firestore.FieldValue;
+  const salesPatch=[];
+  Object.keys(sales).forEach(k=>{ if(prev[k]!==sales[k]) salesPatch.push([k,sales[k]]); });
+  Object.keys(prev).forEach(k=>{ if(!(k in sales)) salesPatch.push([k,FV.delete()]); });
+  SYNC.lastSales=Object.assign({},sales);
+  if(n) storeUpdate(patch).catch(syncErr);
+  if(salesPatch.length){ const args=[]; salesPatch.forEach(([k,v])=>args.push(new firebase.firestore.FieldPath('sales',k),v));
+    SYNC.storeRef.update.apply(SYNC.storeRef,args).catch(e=>{ if(e&&e.code==='not-found') SYNC.storeRef.set({sales},{merge:true}).catch(syncErr); else syncErr(e); }); }
+  const locs=ser(state.locations); if(SYNC.indexRef&&locs!==SYNC.last.locations){ SYNC.last.locations=locs; SYNC.indexRef.set({locations:state.locations},{merge:true}).catch(syncErr); } }
+function pushCountsAll(){ if(!SYNC.on||!SYNC.storeRef) return; storeUpdate({counts:counts}).catch(syncErr); }
+function pushCount(id){ if(!SYNC.on||!SYNC.storeRef) return; const o={}; o['counts.'+id]=cell(id); SYNC.storeRef.update(o).catch(e=>{ if(e&&e.code==='not-found') SYNC.storeRef.set({counts:{[id]:cell(id)}},{merge:true}).catch(syncErr); else syncErr(e); }); }
+function pushCountsClear(){ if(!SYNC.on||!SYNC.storeRef) return; storeUpdate({counts:{}}).catch(syncErr); }
+function snapData(s){ const o=Object.assign({},s); delete o.id; return o; }
+function pushSnapshot(s){ if(!SYNC.on||!SYNC.histRef) return; SYNC.histRef.doc(snapId(s).id).set(snapData(s)).catch(syncErr); }
+function deleteSnapshot(s){ if(!SYNC.on||!SYNC.histRef||!s||!s.id) return; SYNC.histRef.doc(s.id).delete().catch(syncErr); }
+function pushHistoryAll(){ if(!SYNC.on||!SYNC.histRef) return; const b=SYNC.db.batch(); history.slice(0,200).forEach(s=>b.set(SYNC.histRef.doc(snapId(s).id),snapData(s))); b.commit().catch(syncErr); }
+/* One-time move: older versions kept every saved inventory inside the location record. */
+function migrateHistoryArray(arr){ if(SYNC.migrating) return; SYNC.migrating=true;
+  const b=SYNC.db.batch(); arr.slice(0,200).forEach(s=>{ if(s&&s.ts) b.set(SYNC.histRef.doc(snapId(s).id),snapData(s)); });
+  b.update(SYNC.storeRef,{history:firebase.firestore.FieldValue.delete()});
+  b.commit().then(()=>{ SYNC.migrating=false; }).catch(e=>{ SYNC.migrating=false; syncErr(e); }); }
 function isTypingIn(tabId){ const a=document.activeElement; const host=document.getElementById(tabId); return a&&host&&host.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName); }
-function applyRemoteStore(data, own){ if(!data) return; SYNC.applying=true;
-  if(Array.isArray(data.vendors)) state.vendors=data.vendors;
-  if(typeof data.recipientsGlobal==='string') state.recipientsGlobal=data.recipientsGlobal;
-  if(Array.isArray(data.history)) history=data.history;
-  if(data.counts&&typeof data.counts==='object') counts=data.counts;
-  if(data.sales&&typeof data.sales==='object') sales=data.sales;
-  if(Array.isArray(data.staff)&&data.staff.length) state.staff=data.staff;
-  if(typeof data.autoPar==='boolean') state.autoPar=data.autoPar;
-  if(Number(data.coverDays)>0) state.coverDays=Number(data.coverDays);
-  migrate(); persistLocal();
-  SYNC.applying=false;
-  if(document.getElementById('appScreen').style.display==='none') return;
-  // refresh UI. Count-tab uses in-place total refresh so a live update never clears
-  // the boxes someone is typing into. Setup skips re-render while a field is focused.
+function refreshTab(own){ if(document.getElementById('appScreen').style.display==='none') return;
+  // Count tab refreshes totals in place so a live update never clears the boxes someone is typing into.
   if(ui.tab==='count'){ try{ refreshAllTotals(); }catch(e){ renderCount(); } }
   else if(ui.tab==='orders') renderOrders();
   else if(ui.tab==='history'){ if(!isTypingIn('tab-history')) renderHistory(); }
   else if(ui.tab==='setup'){ if(!(own||isTypingIn('tab-setup'))) renderSetup(); } }
+function applyRemoteStore(data, own){ if(!data) return; SYNC.applying=true;
+  const collapsed={}; (state.vendors||[]).forEach(v=>{ if(v._collapsed) collapsed[v.id]=true; });
+  // A field this device changed but hasn't sent yet keeps the local value; everything else takes the cloud copy.
+  if(Array.isArray(data.vendors)&&!isDirty('vendors')){ state.vendors=data.vendors; state.vendors.forEach(v=>{ if(collapsed[v.id]) v._collapsed=true; }); SYNC.last.vendors=ser(state.vendors); }
+  if(typeof data.recipientsGlobal==='string'&&!isDirty('recipientsGlobal')){ state.recipientsGlobal=data.recipientsGlobal; SYNC.last.recipientsGlobal=ser(data.recipientsGlobal); }
+  if(Array.isArray(data.staff)&&data.staff.length&&!isDirty('staff')){ state.staff=data.staff; SYNC.last.staff=ser(data.staff); }
+  if(typeof data.autoPar==='boolean'&&!isDirty('autoPar')){ state.autoPar=data.autoPar; SYNC.last.autoPar=ser(data.autoPar); }
+  if(Number(data.coverDays)>0&&!isDirty('coverDays')){ state.coverDays=Number(data.coverDays); SYNC.last.coverDays=ser(state.coverDays); }
+  if(data.counts&&typeof data.counts==='object') counts=data.counts;
+  if(data.sales&&typeof data.sales==='object'){ const pending=SYNC.lastSales&&ser(SYNC.lastSales)!==ser(sales); if(!pending){ sales=data.sales; SYNC.lastSales=Object.assign({},sales); } }
+  if(Array.isArray(data.history)&&data.history.length){ if(!history.length) history=data.history.slice(); migrateHistoryArray(data.history); }
+  migrate(); persistLocal(); SYNC.applying=false; refreshTab(own); }
+function applyRemoteHistory(qs){ SYNC.applying=true;
+  const remote=qs.docs.map(d=>Object.assign({id:d.id},d.data()));
+  if(remote.length||!SYNC.migrating) history=remote;
+  invalidateModel(); persistLocal(); SYNC.applying=false; refreshTab(qs.metadata.hasPendingWrites); }
 function applyRemoteIndex(data){ if(!data) return;
-  if(Array.isArray(data.locations)&&data.locations.length){ state.locations=data.locations; if(!state.locations.some(l=>l.id===state.locationId)) state.locationId=state.locations[0].id; }
-  SYNC.passcode=(data.passcode!=null?String(data.passcode):'');
-  if(needGate()&&document.getElementById('gateScreen').style.display==='none'&&document.getElementById('appScreen').style.display==='none') showGate(); }
+  if(Array.isArray(data.locations)&&data.locations.length&&ser(data.locations)!==ser(state.locations)){ state.locations=data.locations; SYNC.last.locations=ser(data.locations);
+    if(!state.locations.some(l=>l.id===state.locationId)){ switchLocation(state.locations[0].id); } persistLocal(); }
+  SYNC.passcode=(!SYNC.secure&&data.passcode!=null)?String(data.passcode):''; }
 function refreshAllTotals(){ const host=document.getElementById('tab-count'); if(!host) return; let ok=true;
   state.vendors.forEach(v=>v.items.forEach(it=>{ const h=host.querySelector('[data-have="'+it.id+'"]'); if(!h){ ok=false; return; } h.textContent=haveText(it);
     const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('tr').classList.toggle('toorder',q>0); } }));
   if(!ok){ renderCount(); return; }
   state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m){ const n=toOrderCount(v,ui.day); m.innerHTML=`${v.items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; } }); }
 function locDocId(){ return 'loc_'+(state.locationId||'default'); }
-let resubTimer=null;
-function scheduleResub(){ if(!SYNC.on) return; clearTimeout(resubTimer); resubTimer=setTimeout(()=>{ if(SYNC.on) subscribeLocation(); }, 4000); }
-function subscribeLocation(){ if(!SYNC.on) return;
-  SYNC.unsub.forEach(u=>{try{u();}catch(e){}}); SYNC.unsub=[];
-  if(SYNC.indexRef){ const ui2=SYNC.indexRef.onSnapshot(s=>{ if(s.exists) applyRemoteIndex(s.data()); },()=>{}); SYNC.unsub.push(ui2); }
-  SYNC.storeRef=SYNC.db.collection('stores').doc(locDocId());
-  const u1=SYNC.storeRef.onSnapshot(snap=>{ setSyncChip('on'); if(snap.exists) applyRemoteStore(snap.data(), snap.metadata.hasPendingWrites); else if(!snap.metadata.hasPendingWrites) pushConfig(); }, err=>{ setSyncChip('err'); scheduleResub(); });
-  SYNC.unsub.push(u1); }
+function scheduleResub(){ if(!SYNC.on) return; clearTimeout(resubTimer); resubTimer=setTimeout(()=>{ if(SYNC.on&&SYNC.ready) subscribeLocation(); }, 4000); }
+function unsubscribeAll(){ SYNC.unsub.forEach(u=>{try{u();}catch(e){}}); SYNC.unsub=[]; }
+function subscribeLocation(){ if(!SYNC.on) return; unsubscribeAll();
+  const onErr=e=>{ if(e&&e.code==='permission-denied') lostAccess(); else { setSyncChip('err'); scheduleResub(); } };
+  SYNC.unsub.push(SYNC.indexRef.onSnapshot(s=>{ if(s.exists) applyRemoteIndex(s.data()); },onErr));
+  SYNC.storeRef=SYNC.db.collection('stores').doc(locDocId()); SYNC.histRef=SYNC.storeRef.collection('history');
+  SYNC.last={locations:SYNC.last.locations}; SYNC.lastSales=null; SYNC.synced=false; let first=true;
+  SYNC.unsub.push(SYNC.storeRef.onSnapshot(snap=>{ setSyncChip('on');
+    if(snap.exists) applyRemoteStore(snap.data(), snap.metadata.hasPendingWrites);
+    if(first&&!snap.metadata.fromCache){ first=false; SYNC.synced=true; if(!SYNC.lastSales) SYNC.lastSales={};
+      if(!snap.exists){ pushConfig(); pushHistoryAll(); } else pushConfig(); } },onErr));
+  SYNC.unsub.push(SYNC.histRef.orderBy('ts','desc').limit(200).onSnapshot(applyRemoteHistory,onErr)); }
+
+/* ---------- access: anonymous sign-in + passcode the database checks ---------- */
 function initSync(){ if(!syncEnabled()) return false;
   try{ firebase.initializeApp(FIREBASE_CONFIG); SYNC.db=firebase.firestore(); SYNC.db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     SYNC.on=true; SYNC.indexRef=SYNC.db.collection('stores').doc('_index'); setSyncChip('connecting'); return true;
   }catch(e){ SYNC.on=false; return false; } }
-/* passcode gate */
-const PASS_KEY='pepperlunch_passok';
-function needGate(){ if(!SYNC.on||!SYNC.passcode) return false; let ok=null; try{ ok=localStorage.getItem(PASS_KEY); }catch(e){} return ok!==SYNC.passcode; }
-function showGate(){ document.getElementById('gateScreen').style.display=''; document.getElementById('startScreen').style.display='none'; document.getElementById('appScreen').style.display='none'; const inp=document.getElementById('gateInput'); inp.value=''; setTimeout(()=>inp.focus(),120); }
-function tryUnlock(){ const inp=document.getElementById('gateInput'),err=document.getElementById('gateErr');
-  if(String(inp.value)===String(SYNC.passcode)&&SYNC.passcode){ try{ localStorage.setItem(PASS_KEY,SYNC.passcode); }catch(e){} document.getElementById('gateScreen').style.display='none'; showStart(); }
-  else { err.textContent='Incorrect passcode'; inp.value=''; inp.focus(); } }
+function signIn(){ if(!firebase.auth) return Promise.resolve(null);
+  const a=firebase.auth();
+  return new Promise(res=>{ const off=a.onAuthStateChanged(u=>{ off(); if(u) return res(u.uid);
+    a.signInAnonymously().then(c=>res(c.user.uid)).catch(()=>res(null)); }); }); }
+function memberRef(){ return SYNC.db.collection('members').doc(SYNC.uid); }
+/* Can this device read the store data right now? 'yes', 'no' (rules refused), or 'offline'. */
+function probe(){ return SYNC.indexRef.get().then(s=>{ if(s.exists) applyRemoteIndex(s.data()); return 'yes'; })
+  .catch(e=>e&&e.code==='permission-denied'?'no':'offline'); }
+async function connect(){
+  SYNC.uid=await signIn();
+  if(SYNC.uid){ try{ const m=await memberRef().get(); SYNC.secure=m.exists; }catch(e){ SYNC.secure=false; } }
+  const p=await probe();
+  if(p==='no') return showGate();
+  if(!SYNC.secure&&legacyGate()) return showGate();
+  startSession(); }
+function startSession(){ SYNC.ready=true; subscribeLocation(); setSyncChip('connecting');
+  document.getElementById('gateScreen').style.display='none';
+  if(document.getElementById('appScreen').style.display==='none') showStart(); else if(ui.tab==='setup') renderSetup(); }
+function lostAccess(){ if(!SYNC.ready) return; SYNC.ready=false; SYNC.secure=false; unsubscribeAll(); setSyncChip('err');
+  flash('The store passcode changed. Enter the new one.'); showGate(); }
+function legacyGate(){ if(!SYNC.passcode) return false; let ok=null; try{ ok=localStorage.getItem(PASS_KEY); }catch(e){} return ok!==SYNC.passcode; }
+async function showGate(){ document.getElementById('gateScreen').style.display=''; document.getElementById('startScreen').style.display='none'; document.getElementById('appScreen').style.display='none';
+  const inp=document.getElementById('gateInput'),msg=document.querySelector('#gateScreen .gate p'),btn=document.getElementById('gateBtn');
+  inp.value=''; document.getElementById('gateErr').textContent=''; SYNC.creating=false;
+  msg.textContent='Enter the store passcode to access the shared inventory.'; btn.textContent='Unlock';
+  if(SYNC.uid){ try{ const st=await SYNC.db.collection('settings').doc('status').get();
+    if(!st.exists){ SYNC.creating=true; msg.textContent='First-time setup: choose a store passcode (6 or more digits). Staff will enter it once on each phone.'; btn.textContent='Set passcode'; } }catch(e){} }
+  setTimeout(()=>inp.focus(),120); }
+async function joinWith(code){ try{ await memberRef().set({code,name:state.userName||'',at:firebase.firestore.FieldValue.serverTimestamp()}); }catch(e){ return false; }
+  SYNC.secure=true; return (await probe())!=='no'; }
+async function createPasscode(code){ const b=SYNC.db.batch(),st=SYNC.db.collection('settings');
+  b.set(st.doc('passcode'),{code}); b.set(st.doc('status'),{passcodeSet:true});
+  try{ await b.commit(); return true; }catch(e){ return false; } }
+async function tryUnlock(){ const inp=document.getElementById('gateInput'),err=document.getElementById('gateErr'),btn=document.getElementById('gateBtn');
+  const code=String(inp.value).trim(); if(!code) return;
+  if(SYNC.creating&&!/^\d{6,}$/.test(code)){ err.textContent='Use 6 or more digits'; return; }
+  btn.disabled=true; err.textContent='Checking…';
+  let ok=false;
+  if(SYNC.uid){ if(SYNC.creating) ok=(await createPasscode(code))&&(await joinWith(code)); else ok=await joinWith(code); }
+  if(!ok&&!SYNC.secure&&SYNC.passcode&&code===SYNC.passcode){ try{ localStorage.setItem(PASS_KEY,code); }catch(e){} ok=true; }
+  btn.disabled=false;
+  if(ok){ err.textContent=''; if(SYNC.creating) flash('Store passcode set'); startSession(); }
+  else { SYNC.secure=false; err.textContent=SYNC.creating?'Could not set the passcode. Check your connection.':'Incorrect passcode'; inp.value=''; inp.focus(); } }
+async function changePasscode(code){ if(!/^\d{6,}$/.test(code)){ flash('Use 6 or more digits'); return; }
+  try{ await SYNC.db.collection('settings').doc('passcode').set({code}); await memberRef().set({code,name:state.userName||'',at:firebase.firestore.FieldValue.serverTimestamp()});
+    flash('Passcode changed. Other phones will ask for it.'); renderSetup(); }
+  catch(e){ flash('Could not change the passcode ('+(e.code||'error')+')'); } }
 
 /* ---------- boot ---------- */
 load(); startClock();
-if(initSync()){ subscribeLocation(); setTimeout(()=>{ if(needGate()) showGate(); else if(document.getElementById('appScreen').style.display==='none') showStart(); }, 900); }
+if(initSync()){ connect(); setTimeout(()=>{ if(!SYNC.ready&&document.getElementById('gateScreen').style.display==='none'&&document.getElementById('appScreen').style.display==='none') showStart(); }, 6000); }
 else showStart();
 document.getElementById('goSetup').addEventListener('click',()=>{ if(!ui.day) ui.day=ORDER_DAYS[0]; enterApp(ui.day); switchTab('setup'); });
 document.getElementById('daychip').addEventListener('click',showStart);
