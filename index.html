@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="8">
+<meta name="app-build" content="9">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -163,6 +163,16 @@
   .iorder .uu{color:inherit;font-size:13px;text-transform:none}
   .iorder .sub{font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;opacity:.9;margin-top:1px}
   .modebar{margin:0 0 12px;padding:12px 14px;border-radius:12px;background:var(--order);border:1px solid var(--line);font-size:16px;line-height:1.4}
+  .warnbar{background:#fff7ed;border-color:#fdba74}
+  .warnbar a{color:#9a3412;font-weight:700;cursor:pointer;text-decoration:underline}
+  .progbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:10px 14px;border-radius:12px;background:#fff7ed;border:1px solid #fdba74;font-size:16px;font-weight:700;color:#9a3412}
+  .progbar.done{background:var(--card);border-color:var(--line);color:var(--ok)}
+  .irow.uncounted{box-shadow:inset 5px 0 0 #d97706}
+  .irow.uncounted .have{color:#b45309}
+  .zerobtn{background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:8px;font-size:14px;font-weight:700;padding:3px 10px;margin-left:6px;cursor:pointer;white-space:nowrap}
+  .zerobtn:hover{border-color:var(--red);color:var(--red)}
+  .irow:not(.uncounted) .zerobtn{display:none}
+  #askBox .dlg p{white-space:pre-line}
   .mode-monthend .iorder,.mode-monthend .parmeta{display:none}
   .imeta{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:17px;color:var(--muted);margin:8px 0 10px}
   .imeta b{color:var(--ink)}
@@ -275,7 +285,7 @@ const FULL={sun:'Sunday',mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursda
 const ORDER_DAYS=['tue','thu','fri'];
 const STORE_KEY='pepperlunch_inventory_v5';
 const IN_ARTIFACT=false; /* set to true by build-artifact.sh for the claude.ai copy */
-const DEFAULT_STAFF=['Joy','Liam','Levi','Nari','Sean'];
+const DEFAULT_STAFF=['Joy','Liam','Levi','Nari','Sean','Richard'];
 const DEFAULT_COVER_DAYS=5;
 
 /* ============================================================
@@ -588,11 +598,24 @@ function switchLocation(newId){ if(!newId||newId===state.locationId) return;
   state.locationId=newId; invalidateModel(); if(SYNC.ready) subscribeLocation(); }
 
 /* In-page confirm: the claude.ai viewer blocks window.confirm(), so ask inside the page. */
-function askConfirm(msg,yesLabel,onYes){ const box=document.getElementById('askBox');
+function askConfirm(msg,yesLabel,onYes,noLabel,onNo){ const box=document.getElementById('askBox');
   document.getElementById('askMsg').textContent=msg; const yes=document.getElementById('askYes'),no=document.getElementById('askNo');
-  yes.textContent=yesLabel||'Yes'; box.style.display='';
+  yes.textContent=yesLabel||'Yes'; no.textContent=noLabel||'Cancel'; box.style.display='';
   const close=()=>{ box.style.display='none'; yes.onclick=null; no.onclick=null; };
-  yes.onclick=()=>{ close(); onYes(); }; no.onclick=close; setTimeout(()=>no.focus(),30); }
+  yes.onclick=()=>{ close(); onYes(); }; no.onclick=()=>{ close(); if(onNo) onNo(); }; setTimeout(()=>no.focus(),30); }
+/* Nothing is saved, sent or exported from a partial count. Blank items have to be counted,
+   or someone has to confirm they're truly zero. */
+function requireComplete(next){ const miss=uncountedItems(); if(!miss.length){ next(); return; }
+  const shown=miss.slice(0,10).map(x=>'• '+nice(x.it.name)).join('\n')+(miss.length>10?`\n…and ${miss.length-10} more`:'');
+  askConfirm(`${miss.length} item${miss.length>1?'s have':' has'} not been counted:\n${shown}\n\nAre ${miss.length>1?'they':'it'} truly zero?`,
+    `Yes, ${miss.length>1?'all':'it\'s'} zero`,()=>{ miss.forEach(({it})=>{ const t=cell(it.id); t.c=0; t.l=0; pushCount(it.id); }); save(); flash(`${miss.length} item${miss.length>1?'s':''} counted as 0`); next(); if(ui.tab==='orders') renderOrders(); },
+    'Go back and count',()=>{ switchTab('count'); setTimeout(goNextUncounted,60); }); }
+function uncountedBanner(){ const u=uncountedItems().length; if(!u) return '';
+  return `<div class="modebar warnbar">⚠️ <b>${u} item${u>1?'s are':' is'} not counted yet.</b> ${ui.mode==='order'||!ui.mode?'Their orders assume nothing on hand. ':''}<a data-goto-count>Count ${u>1?'them':'it'}</a>, or you'll be asked to confirm ${u>1?'they are':'it is'} truly zero before anything is saved or sent.</div>`; }
+function wireBanner(host){ host.querySelectorAll('[data-goto-count]').forEach(a=>a.addEventListener('click',()=>{ switchTab('count'); setTimeout(goNextUncounted,60); })); }
+function goNextUncounted(){ const host=document.getElementById('tab-count'); const r=host&&host.querySelector('.irow.uncounted'); if(!r){ flash('Everything is counted'); return; }
+  const card=r.closest('.vendor'); if(card&&card.classList.contains('collapsed')){ card.classList.remove('collapsed'); const v=state.vendors.find(x=>x.id===card.dataset.vid); if(v) v._collapsed=false; }
+  r.scrollIntoView({block:'center',behavior:'smooth'}); const inp=r.querySelector('input[data-k="c"]'); if(inp) setTimeout(()=>inp.focus({preventScroll:true}),350); }
 /* File saves: a plain download link on the hosted site; the downloads capability inside claude.ai. */
 async function saveFile(filename,blob){
   if(IN_ARTIFACT){ const dl=window.claude&&window.claude.use?await window.claude.use('downloads'):null;
@@ -681,9 +704,14 @@ function modeItems(v){ return v.items.filter(inMode); }
 function badgeInner(it,q){ const p=pc(it),loose=orderLoose(it,q),lbl=ui.mode==='protein'?'Tue order':'Order';
   if(p<=1) return `<span>${lbl}</span><b>${fmtN(q)}</b><span class="uu">${it.parUnit==='loose'?esc(plural(it.unit,q)):'cs'}</span>`;
   return `<span>${lbl}</span><b>${fmtN(loose/p)}</b><span class="uu">cs</span>${q>0?`<span class="sub">(${fmtN(loose)} ${esc(plural(it.unit,loose))})</span>`:''}`; }
-function vendorMeta(v,day){ const items=modeItems(v),n=ui.mode==='monthend'?0:items.filter(it=>orderQty(it,day)>0).length;
-  return `${items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; }
-function haveText(it,empty){ const c=cell(it.id),a=num(c.c),b=num(c.l); if(!a&&!b) return empty||'—'; const p=[]; if(a)p.push(a+' cs'); if(b)p.push(b+' '+(it.unit||'ea')); return p.join(' / '); }
+function vendorMeta(v,day){ const items=modeItems(v),n=ui.mode==='monthend'?0:items.filter(it=>orderQty(it,day)>0).length,u=items.filter(it=>!isCounted(it)).length;
+  return `${items.length} items${u?' · <b style="color:#b45309">'+u+' not counted</b>':''}${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; }
+function progressHtml(){ let total=0,done=0; state.vendors.forEach(v=>modeItems(v).forEach(it=>{ total++; if(isCounted(it)) done++; }));
+  return done>=total?`<span>✓ All ${total} items counted</span>`:`<span>${done} of ${total} counted · ${total-done} to go</span><button class="btn sm ghost" type="button" data-next-unc>Next uncounted ↓</button>`; }
+/* An item is counted once someone enters a number for it, 0 included. Blank means nobody counted it. */
+function isCounted(it){ const c=counts[it.id]; return !!c&&((c.c!==''&&c.c!=null)||(c.l!==''&&c.l!=null)); }
+function uncountedItems(){ const out=[]; state.vendors.forEach(v=>modeItems(v).forEach(it=>{ if(!isCounted(it)) out.push({v,it}); })); return out; }
+function haveText(it,empty){ const c=cell(it.id),a=num(c.c),b=num(c.l); if(!a&&!b) return isCounted(it)?'0':(empty||'Not counted'); const p=[]; if(a)p.push(a+' cs'); if(b)p.push(b+' '+(it.unit||'ea')); return p.join(' / '); }
 function methodBadge(m){ return m==='excel'?'<span class="badge b-excel">Excel form</span>':m==='web'?'<span class="badge b-web">Web portal</span>':'<span class="badge b-text">Text / email</span>'; }
 function flash(msg){ const f=document.getElementById('flash'); f.textContent=msg; f.classList.add('show'); clearTimeout(f._t); f._t=setTimeout(()=>f.classList.remove('show'),1800); }
 function fmtDate(d){ return d.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}); }
@@ -736,6 +764,7 @@ function renderCount(){
   host.className=ui.mode==='monthend'?'mode-monthend':'';
   let html=ui.mode==='protein'?`<div class="modebar">🥩 <b>Sunday protein count.</b> Only proteins are listed. The red badges preview what Tuesday's order will need. Save it from the 📊 Summary tab.</div>`
     :ui.mode==='monthend'?`<div class="modebar">📦 <b>Month-end full inventory.</b> Count every item, then save it and download the Excel sheet from the 📊 Summary tab. Nothing is ordered from this count.</div>`:'';
+  html+='<div class="progbar" id="cntProg"></div>';
   state.vendors.forEach(v=>{
     const secs=vendorSections(v).map(s=>({name:s.name,items:s.items.filter(inMode)})).filter(s=>s.items.length); if(!secs.length) return;
     const collapsed=v._collapsed?'collapsed':'',hasSections=secs.length>1||(secs[0]&&secs[0].name);
@@ -744,16 +773,16 @@ function renderCount(){
       if(hasSections&&sec.name) rows+=`<div class="secthead">${esc(sec.name)}</div>`;
       sec.items.forEach(it=>{
         const ct=coverTarget(it),par=effPar(it,day),q=orderQty(it,day),ul=parULabel(it),un=esc(it.unit||'ea');
-        rows+=`<div class="irow ${q>0&&ui.mode!=='monthend'?'toorder':''}" data-row="${it.id}">
+        rows+=`<div class="irow ${q>0&&ui.mode!=='monthend'?'toorder':''} ${isCounted(it)?'':'uncounted'}" data-row="${it.id}">
           <div class="ihead">
             <div class="iname">${esc(nice(it.name))}<div class="pkg">${esc([it.sku,it.pkg,it.perCase>1?it.perCase+' per case':''].filter(Boolean).join(' · '))}</div></div>
             <div class="iorder ${q>0?'':'zero'}" data-order="${it.id}">${badgeInner(it,q)}</div>
           </div>
           <div class="imeta"><span class="parmeta">Par <b>${fmtN(par)} ${ul}</b>${ct?`<span class="autotag" title="${coverDays()} days of use, from ${ct.src==='sales'?'sales forecast':'past counts'}">${coverDays()}d</span>`:''}</span>
-            <span>On hand <b class="have" data-have="${it.id}">${haveText(it)}</b> <button class="resetbtn" data-reset="${it.id}" title="Reset this item" aria-label="Reset ${esc(it.name)}">↺</button></span></div>
+            <span>On hand <b class="have" data-have="${it.id}">${haveText(it)}</b> <button class="resetbtn" data-reset="${it.id}" title="Reset this item" aria-label="Reset ${esc(it.name)}">↺</button><button class="zerobtn" type="button" data-zero="${it.id}" title="Nothing on hand">0 on hand</button></span></div>
           <div class="addbox">
-            <label class="cin"><input class="count" inputmode="decimal" data-item="${it.id}" data-k="c" placeholder="0" aria-label="Cases"><span>cases</span></label>
-            <label class="cin"><input class="count" inputmode="decimal" data-item="${it.id}" data-k="l" placeholder="0" aria-label="${un}"><span>${un}</span></label>
+            <label class="cin"><input class="count" inputmode="decimal" data-item="${it.id}" data-k="c" aria-label="Cases"><span>cases</span></label>
+            <label class="cin"><input class="count" inputmode="decimal" data-item="${it.id}" data-k="l" aria-label="${un}"><span>${un}</span></label>
             <button class="subbtn" data-sub="${it.id}" title="Subtract from total" aria-label="Subtract">−</button>
             <button class="addbtn" data-add="${it.id}" title="Add to on-hand total" aria-label="Add">＋</button>
           </div>
@@ -766,20 +795,25 @@ function renderCount(){
       <div class="vbody">${rows}</div></div>`;
   });
   html+=`<div class="row" style="margin:4px 2px 24px"><button class="btn ghost sm" id="clearCounts">${ui.mode==='protein'?'Clear protein counts':'Clear all counts'}</button>
-    <span class="hint" style="padding:0">Count each storage area, then tap <b>＋</b> to add it to the total. Order = par minus on hand.${state.autoPar?` Pars tagged <span class="autotag">${coverDays()}d</span> are set automatically to ${coverDays()} days of usage.`:''}</span></div>`;
+    <span class="hint" style="padding:0">Count each storage area, then tap <b>＋</b> to add it to the total. If there's none, enter 0 or tap <b>0 on hand</b>. Every item needs a count before the inventory can be saved or the order sent. Order = par minus on hand.${state.autoPar?` Pars tagged <span class="autotag">${coverDays()}d</span> are set automatically to ${coverDays()} days of usage.`:''}</span></div>`;
   host.innerHTML=html; updateAllMeta();
 
   function doAdd(id){
     const cIn=host.querySelector('input[data-item="'+id+'"][data-k="c"]'),lIn=host.querySelector('input[data-item="'+id+'"][data-k="l"]');
-    const ac=num(cIn.value),al=num(lIn.value); if(!ac&&!al){ cIn.focus(); return; }
-    const t=cell(id); t.c=num(t.c)+ac; t.l=num(t.l)+al; save(); pushCount(id); cIn.value=''; lIn.value=''; refreshItem(id); cIn.focus();
+    const cv=cIn.value.trim(),lv=lIn.value.trim(); if(cv===''&&lv===''){ cIn.focus(); return; }
+    const t=cell(id); t.c=num(t.c)+num(cv); t.l=num(t.l)+num(lv); save(); pushCount(id); cIn.value=''; lIn.value=''; refreshItem(id); cIn.focus();
     flash('Added — total is now '+haveText(findItem(id).it,'0'));
   }
   function refreshItem(id){ const it=findItem(id).it,q=orderQty(it,ui.day);
     const h=host.querySelector('[data-have="'+id+'"]'); if(h) h.textContent=haveText(it);
+    const row=host.querySelector('[data-row="'+id+'"]'); if(row) row.classList.toggle('uncounted',!isCounted(it));
     const oc=host.querySelector('[data-order="'+id+'"]'); if(oc){ oc.innerHTML=badgeInner(it,q); oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0&&ui.mode!=='monthend'); } updateAllMeta();
   }
-  function updateAllMeta(){ state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m) m.innerHTML=vendorMeta(v,ui.day); }); }
+  function updateAllMeta(){ state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m) m.innerHTML=vendorMeta(v,ui.day); });
+    const pg=host.querySelector('#cntProg'); if(pg){ pg.innerHTML=progressHtml(); pg.classList.toggle('done',!uncountedItems().length); } }
+  host.addEventListener('click',e=>{ if(e.target.closest('[data-next-unc]')) goNextUncounted(); });
+  host.querySelectorAll('[data-zero]').forEach(b=>b.addEventListener('click',()=>{ const id=b.dataset.zero,it=findItem(id).it; if(isCounted(it)) return;
+    const t=cell(id); t.c=0; t.l=0; save(); pushCount(id); refreshItem(id); flash('Counted as 0'); }));
   function doSub(id){
     const cIn=host.querySelector('input[data-item="'+id+'"][data-k="c"]'),lIn=host.querySelector('input[data-item="'+id+'"][data-k="l"]');
     const ac=num(cIn.value),al=num(lIn.value); if(!ac&&!al){ cIn.focus(); return; }
@@ -819,10 +853,10 @@ function renderModeSummary(){
   const title=pro?'🥩 Sunday protein count':'📦 Month-end inventory, '+now.toLocaleDateString(undefined,{month:'long',year:'numeric'});
   const sub=pro?'Proteins on hand now. The Tuesday figures are what the order would be at today\'s count; they grow as stock is used Sunday and Monday.'
     :'Every item on hand, in cases with the loose amount in parentheses. Download the Excel sheet to enter the count in R365.';
-  host.innerHTML=`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><b>${esc(title)}</b><div class="hint" style="padding:4px 0 0">${sub} ${counted} of ${total} items have a count; blanks save as 0.</div></div>
+  host.innerHTML=uncountedBanner()+`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><b>${esc(title)}</b><div class="hint" style="padding:4px 0 0">${sub} ${counted} of ${total} items have a count; blanks save as 0.</div></div>
     <div class="row"><button class="btn sm" id="saveInv">💾 Save ${pro?'protein count':'month-end count'}</button>${pro?'':'<button class="btn sm gray" id="meXlsx">⬇️ Download Excel</button>'}</div></div></div></div>`+cards;
   document.getElementById('saveInv').addEventListener('click',saveSnapshot);
-  const mx=document.getElementById('meXlsx'); if(mx) mx.addEventListener('click',downloadMonthEnd);
+  wireBanner(host); const mx=document.getElementById('meXlsx'); if(mx) mx.addEventListener('click',()=>requireComplete(downloadMonthEnd));
 }
 function downloadMonthEnd(){ const now=new Date(),loc=((state.locations||[]).find(l=>l.id===state.locationId)||{}).name||'';
   const rows=[[{v:'PEPPER LUNCH — Month-end inventory'+(loc?' — '+loc:''),s:2}],[{v:'Counted '+fmtDate(now)+' at '+fmtTime(now)+(state.userName?'   By: '+state.userName:''),s:0}],[],
@@ -835,7 +869,7 @@ function downloadMonthEnd(){ const now=new Date(),loc=((state.locations||[]).fin
 function renderOrders(){
   if(ui.mode&&ui.mode!=='order'){ renderModeSummary(); return; }
   const day=ui.day,host=document.getElementById('tab-orders');
-  let html=`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between"><div><b>Order summary</b> — ${FULL[day]}</div><div class="row"><button class="btn sm" id="saveInv">💾 Save this inventory</button>${IN_ARTIFACT?'':'<button class="btn sm ghost" id="printBtn">🖨️ Print all</button>'}</div></div></div></div>`;
+  let html=uncountedBanner()+`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between"><div><b>Order summary</b> — ${FULL[day]}</div><div class="row"><button class="btn sm" id="saveInv">💾 Save this inventory</button>${IN_ARTIFACT?'':'<button class="btn sm ghost" id="printBtn">🖨️ Print all</button>'}</div></div></div></div>`;
   state.vendors.forEach(v=>{
     const recips=(v.recipients||'').trim()||(state.recipientsGlobal||'').trim(); let inner='',n=0;
     vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
@@ -849,14 +883,15 @@ function renderOrders(){
     html+=`<div class="card"><div class="vhead" style="cursor:default"><h2>${esc(v.name)}</h2>${methodBadge(v.method)}<span class="meta">${n} to order</span></div>
       ${(v.note||'').trim()?`<div class="vnote">${esc(v.note)}</div>`:''}${body}${recips?`<div class="hint">Recipients: ${esc(recips)}</div>`:`<div class="hint">No recipients set — add them in ⚙️ Setup.</div>`}<div class="toolbar">${tools}</div></div>`;
   });
-  host.innerHTML=html;
-  host.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>{ copyText(buildTextOrder(state.vendors.find(x=>x.id===b.dataset.copy),day)); flash('Order list copied'); }));
-  host.querySelectorAll('[data-xlsx]').forEach(b=>b.addEventListener('click',()=>downloadExcel(state.vendors.find(x=>x.id===b.dataset.xlsx),day)));
-  host.querySelectorAll('[data-email]').forEach(b=>b.addEventListener('click',()=>emailOrder(state.vendors.find(x=>x.id===b.dataset.email),day)));
-  const pb=document.getElementById('printBtn'); if(pb) pb.addEventListener('click',()=>printAll(day));
+  host.innerHTML=html; wireBanner(host);
+  host.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>requireComplete(()=>{ copyText(buildTextOrder(state.vendors.find(x=>x.id===b.dataset.copy),day)); flash('Order list copied'); })));
+  host.querySelectorAll('[data-xlsx]').forEach(b=>b.addEventListener('click',()=>requireComplete(()=>downloadExcel(state.vendors.find(x=>x.id===b.dataset.xlsx),day))));
+  host.querySelectorAll('[data-email]').forEach(b=>b.addEventListener('click',()=>requireComplete(()=>emailOrder(state.vendors.find(x=>x.id===b.dataset.email),day))));
+  const pb=document.getElementById('printBtn'); if(pb) pb.addEventListener('click',()=>requireComplete(()=>printAll(day)));
   document.getElementById('saveInv').addEventListener('click',saveSnapshot);
 }
-function saveSnapshot(){
+function saveSnapshot(){ requireComplete(doSaveSnapshot); }
+function doSaveSnapshot(){
   const day=ui.day,now=new Date(),kind=ui.mode||'order',ordering=kind==='order';
   /* protein counts keep only proteins, so items nobody counted on Sunday don't read as used up;
      protein and month-end counts place no order */
@@ -1250,9 +1285,11 @@ function applyRemoteIndex(data){ if(!data) return;
   SYNC.passcode=(!SYNC.secure&&data.passcode!=null)?String(data.passcode):''; }
 function refreshAllTotals(){ const host=document.getElementById('tab-count'); if(!host) return; let ok=true;
   state.vendors.forEach(v=>modeItems(v).forEach(it=>{ const h=host.querySelector('[data-have="'+it.id+'"]'); if(!h){ ok=false; return; } h.textContent=haveText(it);
+    const row=h.closest('.irow'); if(row) row.classList.toggle('uncounted',!isCounted(it));
     const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.innerHTML=badgeInner(it,q); oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0&&ui.mode!=='monthend'); } }));
   if(!ok){ renderCount(); return; }
-  state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m) m.innerHTML=vendorMeta(v,ui.day); }); }
+  state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m) m.innerHTML=vendorMeta(v,ui.day); });
+  const pg=host.querySelector('#cntProg'); if(pg){ pg.innerHTML=progressHtml(); pg.classList.toggle('done',!uncountedItems().length); } }
 function locDocId(){ return 'loc_'+(state.locationId||'default'); }
 function scheduleResub(){ if(!SYNC.on) return; clearTimeout(resubTimer); resubTimer=setTimeout(()=>{ if(SYNC.on&&SYNC.ready) subscribeLocation(); }, 4000); }
 function unsubscribeAll(){ SYNC.unsub.forEach(u=>{try{u();}catch(e){}}); SYNC.unsub=[]; }
