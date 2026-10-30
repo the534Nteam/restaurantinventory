@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light only">
 <meta name="theme-color" content="#c8102e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -12,15 +13,13 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="4">
+<meta name="app-build" content="5">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
-  :root{--red:#c8102e;--red-dark:#9c0c23;--ink:#1c1c1e;--muted:#6b6468;--line:#e6e1e3;--bg:#f5f3f4;--card:#fff;--sub:#faf8f9;--sect:#fbe9ec;--order:#fff4f5;--btn2:#e7e3e5;--btn2-ink:#374151;--danger:#991b1b;--danger-bg:#fee2e2;--ok:#166534;--ok-bg:#dcfce7;--shadow:0 1px 3px rgba(0,0,0,.08);color-scheme:light}
-  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--red:#e3304d;--red-dark:#c8102e;--ink:#f3eef0;--muted:#a69ea2;--line:#3a3336;--bg:#141113;--card:#1f1b1d;--sub:#272225;--sect:#3b1a21;--order:#34161c;--btn2:#3a3336;--btn2-ink:#e6e1e3;--danger:#fca5a5;--danger-bg:#4c1d1d;--ok:#86efac;--ok-bg:#14361f;--shadow:0 1px 3px rgba(0,0,0,.4);color-scheme:dark}}
-  :root[data-theme="dark"]{--red:#e3304d;--red-dark:#c8102e;--ink:#f3eef0;--muted:#a69ea2;--line:#3a3336;--bg:#141113;--card:#1f1b1d;--sub:#272225;--sect:#3b1a21;--order:#34161c;--btn2:#3a3336;--btn2-ink:#e6e1e3;--danger:#fca5a5;--danger-bg:#4c1d1d;--ok:#86efac;--ok-bg:#14361f;--shadow:0 1px 3px rgba(0,0,0,.4);color-scheme:dark}
+  :root{--red:#c8102e;--red-dark:#9c0c23;--ink:#1c1c1e;--muted:#4a4447;--line:#d9d3d6;--bg:#f5f3f4;--card:#fff;--sub:#faf8f9;--sect:#fbe9ec;--order:#fff4f5;--btn2:#e7e3e5;--btn2-ink:#374151;--danger:#991b1b;--danger-bg:#fee2e2;--ok:#166534;--ok-bg:#dcfce7;--shadow:0 1px 3px rgba(0,0,0,.08);color-scheme:light}
   *{box-sizing:border-box}html,body{margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;-webkit-text-size-adjust:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:17px;line-height:1.45;-webkit-text-size-adjust:100%}
   #startScreen{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;background:linear-gradient(160deg,#c8102e,#7d0b1d);padding:8vh 16px}
   .start{max-width:460px;width:100%;background:var(--card);border-radius:18px;padding:26px 24px 30px;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:center}
   .start .brand{font-weight:800;font-size:22px;color:var(--red);display:flex;align-items:center;justify-content:center;gap:8px}
@@ -52,8 +51,8 @@
   main{max-width:1000px;margin:0 auto;padding:14px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
   .vhead{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:var(--sub);border-bottom:1px solid var(--line)}
-  .vhead h2{margin:0;font-size:16px}.vhead .meta{font-size:12px;color:var(--muted)}
-  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
+  .vhead h2{margin:0;font-size:20px}.vhead .meta{font-size:14px;color:var(--muted)}
+  .badge{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
   .b-web{background:#e0f2fe;color:#075985}.b-excel{background:var(--ok-bg);color:var(--ok)}.b-text{background:#f3e8ff;color:#6b21a8}
   .chev{margin-left:auto;transition:transform .15s;color:var(--muted)}.collapsed .chev{transform:rotate(-90deg)}.collapsed .vbody{display:none}
   .vbody{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -83,13 +82,13 @@
   .btn.sm{padding:6px 10px;font-size:13px}.btn.gray{background:#374151}.btn.gray:hover{background:#1f2937}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px;border-top:1px solid var(--line);background:var(--sub)}
-  .hint{font-size:12px;color:var(--muted);padding:0 14px 12px}
+  .hint{font-size:14px;color:var(--muted);padding:0 14px 12px}
   .summary{padding:12px 14px}
   .osec{font-weight:800;color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 2px}
   .summary .line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}
   .summary .line:last-child{border-bottom:none}.summary .qty{font-weight:800;color:var(--red);white-space:nowrap}.summary .oh{font-size:11px;color:var(--muted)}
   .empty{padding:24px;text-align:center;color:var(--muted)}
-  .setup-sec{padding:14px}.setup-sec h3{margin:0 0 4px}.setup-sec .sub{color:var(--muted);font-size:13px;margin-bottom:10px}
+  .setup-sec{padding:14px}.setup-sec h3{margin:0 0 4px}.setup-sec .sub{color:var(--muted);font-size:15px;margin-bottom:10px}
   .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}.field label{font-size:12px;font-weight:700;color:var(--muted)}
   .field input,.field select,.field textarea{padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
   .setsec{font-weight:800;color:var(--red);font-size:12px;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px;border-bottom:1px solid var(--line);padding-bottom:3px}
@@ -146,27 +145,28 @@
   #askBox .dlg p{margin:0 0 16px;font-weight:600}
   #askBox .row{justify-content:flex-end}
   /* count list: one card per item, readable on a phone */
-  .secthead{background:var(--sect);color:var(--red);font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:8px 14px}
+  .secthead{background:var(--sect);color:var(--red);font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:.5px;padding:8px 14px}
   .irow{padding:12px 14px 14px;border-bottom:1px solid var(--line)}
   .irow:last-child{border-bottom:none}
   .irow.toorder{background:var(--order)}
   .ihead{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
-  .iname{font-weight:700;font-size:16px;line-height:1.3;overflow-wrap:anywhere}
-  .iname .pkg{font-weight:400;margin-top:3px;font-size:12px}
+  .iname{font-weight:700;font-size:19px;line-height:1.3;overflow-wrap:anywhere}
+  .iname .pkg{font-weight:400;margin-top:4px;font-size:14px;color:var(--muted)}
   .iorder{flex:none;min-width:68px;text-align:center;border-radius:10px;padding:5px 8px;background:var(--red);color:#fff}
-  .iorder span{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
-  .iorder b{display:block;font-size:24px;line-height:1.1}
+  .iorder span{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .iorder b{display:block;font-size:28px;line-height:1.1}
   .iorder.zero{background:var(--sub);color:var(--muted);border:1px solid var(--line)}
-  .iorder .uu{color:inherit;font-size:11px}
-  .imeta{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:15px;color:var(--muted);margin:8px 0 10px}
+  .iorder .uu{color:inherit;font-size:13px;text-transform:none}
+  .imeta{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:17px;color:var(--muted);margin:8px 0 10px}
   .imeta b{color:var(--ink)}
   .imeta .resetbtn{font-size:16px;padding:2px 8px;margin-left:2px}
   .addbox{display:flex;gap:8px;align-items:flex-start;justify-content:flex-start}
   .cin{display:flex;flex-direction:column;align-items:stretch;gap:3px;flex:1;max-width:120px;text-align:center}
-  .cin span{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+  .cin span{font-size:14px;color:var(--muted);font-weight:600}
   input.count{width:100%;height:48px;font-size:20px;padding:6px}
   .addbtn,.subbtn{flex:none;width:54px;height:48px;font-size:26px;border-radius:10px}
-  .summary .line{padding:9px 0;font-size:15px}.summary .oh{display:block;margin-top:2px;font-size:12px}.summary .qty{font-size:17px}
+  .summary .line{padding:11px 0;font-size:17px}.summary .oh{display:block;margin-top:3px;font-size:14px;color:var(--muted)}.summary .qty{font-size:19px}
+  .summary .sku{font-size:13px}.osec{font-size:13px}
   .parlink{display:inline-block;margin-top:10px;font-weight:700;color:var(--red)}
   @media(max-width:640px){
     header{padding:8px 10px}
@@ -615,6 +615,12 @@ function effPar(it,day){ if(noTruck(it,day)) return 0; const c=coverTarget(it); 
 function fmtN(n){ return String(Math.round((Number(n)||0)*100)/100); }
 function money(n){ return '$'+Math.round(n).toLocaleString(); }
 
+/* Shows vendor names in normal capitalization: "PL BEEF RIBEYE STK 8 OZ" reads as "PL Beef Ribeye Stk 8 OZ".
+   Sizes, codes and abbreviations stay as they are. The original name still goes to vendors. */
+const KEEP_CAPS=new Set(['PL','LB','LBS','OZ','FL','FZ','IQF','EVOO','GF','CO2','BIB','JPN','SK','QP','P&D','MFFP','XL','M','AAB','CD','SC','CK','BHT','NY','BBQ','PC','CT','L','G','KG','USA','SE&E']);
+function nice(name){ return String(name||'').split(/\s+/).filter((w,i,a)=>!(w==='F'&&i===a.length-1&&a.length>1)).map(w=>{
+    if(/\d/.test(w)||KEEP_CAPS.has(w.replace(/[^A-Z0-9&]/g,''))) return w;
+    return w.toLowerCase().replace(/(^|[-/(&"])([a-z])/g,(m,p,c)=>p+c.toUpperCase()); }).join(' '); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function num(v){ return (v===''||v==null||isNaN(v))?0:Number(v); }
 function cell(id){ return counts[id]||(counts[id]={c:'',l:''}); }
@@ -676,7 +682,7 @@ function renderCount(){
         const ct=coverTarget(it),par=effPar(it,day),q=orderQty(it,day),ul=parULabel(it),un=esc(it.unit||'ea');
         rows+=`<div class="irow ${q>0?'toorder':''}" data-row="${it.id}">
           <div class="ihead">
-            <div class="iname">${esc(it.name)}<div class="pkg">${esc([it.sku,it.pkg,it.perCase>1?it.perCase+' per case':''].filter(Boolean).join(' · '))}</div></div>
+            <div class="iname">${esc(nice(it.name))}<div class="pkg">${esc([it.sku,it.pkg,it.perCase>1?it.perCase+' per case':''].filter(Boolean).join(' · '))}</div></div>
             <div class="iorder ${q>0?'':'zero'}" data-order="${it.id}"><span>Order</span><b>${q}</b><span class="uu">${ul}</span></div>
           </div>
           <div class="imeta"><span>Par <b>${fmtN(par)} ${ul}</b>${ct?`<span class="autotag" title="${coverDays()} days of use, from ${ct.src==='sales'?'sales forecast':'past counts'}">${coverDays()}d</span>`:''}</span>
@@ -740,7 +746,7 @@ function renderOrders(){
     const recips=(v.recipients||'').trim()||(state.recipientsGlobal||'').trim(); let inner='',n=0;
     vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
       if(sec.name) inner+=`<div class="osec">${esc(sec.name)}</div>`;
-      inner+=lines.map(l=>{ n++; return `<div class="line"><span>${l.it.sku?'<span class="sku">'+esc(l.it.sku)+'</span> ':''}${esc(l.it.name)} <span class="oh">(have ${haveText(l.it,'0')})</span></span><span class="qty">${l.q} ${parULabel(l.it)}</span></div>`; }).join('');
+      inner+=lines.map(l=>{ n++; return `<div class="line"><span>${l.it.sku?'<span class="sku">'+esc(l.it.sku)+'</span> ':''}${esc(nice(l.it.name))} <span class="oh">Have ${haveText(l.it,'0')}</span></span><span class="qty">${l.q} ${parULabel(l.it)}</span></div>`; }).join('');
     });
     const body=n?`<div class="summary">${inner}</div>`:`<div class="empty">Nothing to order for ${v.name} — all pars met for ${FULL[day]}.</div>`;
     let tools=`<button class="btn sm" data-copy="${v.id}">📋 Copy list</button>`;
