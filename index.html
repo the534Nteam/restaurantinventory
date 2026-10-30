@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="7">
+<meta name="app-build" content="8">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -549,6 +549,17 @@ function applyParsV2(){
   Object.keys(VENDOR_NOTES_V2).forEach(vn=>{ const v=state.vendors.find(x=>x.name===vn),[from,to]=VENDOR_NOTES_V2[vn];
     if(v&&String(v.note||'').trim()===from) v.note=to; });
   state.autoPar=false; state.parsVersion=2; }
+/* From the Oct 30 check against R365 receipts: bacon is bought as 460649 Bacon Bits, and karaage
+   and Angus use R365's pack sizes. Angus pars were in 5 lb bags; a pack is 10 lb, so they're halved
+   (rounded up) to keep about the same pounds. */
+function applyFixesV3(){
+  const bySku=(vn,s)=>{ const v=state.vendors.find(x=>x.name===vn); return v&&v.items.find(i=>String(i.sku||'').trim()===s); };
+  const bacon=bySku('Y. Hata','117694'); if(bacon){ bacon.sku='460649'; bacon.name='BACON BITS'; bacon.brand=''; }
+  const kar=bySku('Wismettac','94250A'); if(kar){ kar.pkg='24/ 12.3 OZ'; kar.perCase=24; kar.unit='pack'; }
+  const ang=bySku('Wismettac','87379'); if(ang){ const wasBags=ang.parUnit==='loose'&&pc(ang)===4;
+    ang.pkg='2/ 10 LB'; ang.perCase=2; ang.unit='pack';
+    if(wasBags) ORDER_DAYS.forEach(d=>{ const p=Number(ang.pars[d])||0; ang.pars[d]=p?Math.ceil(p/2):0; }); }
+  state.parsVersion=3; }
 
 /* counts / history / sales belong to the current location; byLoc parks the other locations' copies
    so offline use keeps each store separate (with cloud sync, each location has its own document). */
@@ -565,6 +576,7 @@ function migrate(){ let changed=false;
   if(!(Number(state.coverDays)>0)) state.coverDays=DEFAULT_COVER_DAYS;
   (state.vendors||[]).forEach(v=>{ if(v.customerNo===undefined&&v.method==='excel'&&/hata/i.test(v.name||'')){ v.customerNo='847089'; v.sheetNote='Submit by 12 noon the day before delivery (routed Tue & Fri). Qty is in CASE or EACH.'; } });
   if((Number(state.parsVersion)||0)<2&&Array.isArray(state.vendors)){ applyParsV2(); changed=true; }
+  if((Number(state.parsVersion)||0)<3&&Array.isArray(state.vendors)){ applyFixesV3(); changed=true; }
   (history||[]).forEach(snapId); invalidateModel(); return changed; }
 function snapId(s){ if(s&&!s.id) s.id='h'+String(s.ts||Date.now()).replace(/\D/g,''); return s; }
 function persistLocal(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify({config:state,counts,history,sales,byLoc})); }catch(e){} }
