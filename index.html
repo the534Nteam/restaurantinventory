@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="6">
+<meta name="app-build" content="7">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -175,6 +175,21 @@
   .summary .line{padding:11px 0;font-size:17px}.summary .oh{display:block;margin-top:3px;font-size:14px;color:var(--muted)}.summary .qty{font-size:19px}
   .summary .sku{font-size:13px}.osec{font-size:13px}
   .parlink{display:inline-block;margin-top:10px;font-weight:700;color:var(--red)}
+  /* pars screen */
+  .vpick{display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;margin-top:14px;-webkit-overflow-scrolling:touch}
+  .vchip{flex:none;padding:10px 16px;border-radius:999px;border:2px solid var(--line);background:var(--card);font-weight:700;font-size:16px;color:var(--ink);cursor:pointer}
+  .vchip.on{background:var(--red);border-color:var(--red);color:#fff}
+  .phead,.prow{display:grid;grid-template-columns:1fr 56px 56px 56px;gap:6px;align-items:center;padding:10px 14px}
+  .phead{background:var(--sub);border-bottom:1px solid var(--line);font-weight:800;font-size:15px;color:var(--muted);text-align:center}
+  .phead span:first-child{text-align:left;color:var(--ink);font-size:20px}
+  .prow{border-bottom:1px solid var(--line)}.prow:last-child{border-bottom:none}
+  .pname{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}.pname .pkg{font-weight:400;font-size:14px;color:var(--muted);margin-top:2px}
+  .pin{width:100%;height:50px;text-align:center;font-size:20px;font-weight:700;border:2px solid var(--line);border-radius:10px;padding:4px;-moz-appearance:textfield}
+  .pin::-webkit-outer-spin-button,.pin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .pin.zero{color:var(--muted);background:var(--sub);font-weight:600}
+  .pin:focus{outline:none;border-color:var(--red);background:var(--card);color:var(--ink)}
+  .warnbox{background:#fff6dc;border:1px solid #e9cf7f;border-radius:10px;padding:10px 12px;font-size:15px;margin-top:10px}
+  @media(max-width:440px){ nav .ni{display:none} nav button{font-size:14px} }
   @media(max-width:640px){
     header{padding:8px 10px}
     header .brand{display:none}
@@ -235,16 +250,18 @@
       </div>
     </div>
     <nav>
-      <button data-tab="count" class="active">📋 Count</button>
-      <button data-tab="orders">📦 Orders</button>
-      <button data-tab="history">🕓 History</button>
-      <button data-tab="setup">⚙️ Setup</button>
+      <button data-tab="count" class="active"><span class="ni">📋</span> Count</button>
+      <button data-tab="orders"><span class="ni">📦</span> Orders</button>
+      <button data-tab="pars"><span class="ni">🎯</span> Pars</button>
+      <button data-tab="history"><span class="ni">🕓</span> History</button>
+      <button data-tab="setup"><span class="ni">⚙️</span> Setup</button>
     </nav>
   </header>
   <main>
     <div id="tab-count"></div>
     <div id="tab-orders" style="display:none"></div>
     <div id="tab-history" style="display:none"></div>
+    <div id="tab-pars" style="display:none"></div>
     <div id="tab-setup" style="display:none"></div>
   </main>
 </div>
@@ -1116,7 +1133,35 @@ function renderHistory(){
     askConfirm('Delete this saved inventory?','Delete',()=>{ const i=history.indexOf(s); if(i>=0) history.splice(i,1); save(); deleteSnapshot(s); renderHistory(); }); }));
 }
 
-function switchTab(t){ ui.tab=t; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t)); ['count','orders','history','setup'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none'); if(t==='count') renderCount(); else if(t==='orders') renderOrders(); else if(t==='history') renderHistory(); else renderSetup(); }
+/* PARS: one vendor at a time, Tue / Thu / Fri boxes on one line per item. Saves as you type. */
+let parsFlashT=null;
+function renderPars(){
+  const host=document.getElementById('tab-pars');
+  if(!state.vendors.some(v=>v.id===ui.parsVendor)) ui.parsVendor=state.vendors[0]&&state.vendors[0].id;
+  const v=state.vendors.find(x=>x.id===ui.parsVendor);
+  let html=`<div class="card"><div class="setup-sec"><h3>Pars</h3>
+    <div class="sub">How much you want on the shelf right after each delivery. Type a new number and it saves right away for every phone. A 0 means nothing is ordered that day.</div>
+    ${state.autoPar?`<div class="warnbox">Automatic pars are on, so items with enough count history order ${coverDays()} days of usage instead of these numbers. Turn it off in ⚙️ Setup to use these.</div>`:''}
+    <div class="vpick">${state.vendors.map(x=>`<button class="vchip ${x.id===ui.parsVendor?'on':''}" data-pv="${x.id}">${esc(x.name)}</button>`).join('')}</div></div></div>`;
+  if(v){ let rows='';
+    vendorSections(v).forEach(sec=>{ if(sec.name) rows+=`<div class="secthead">${esc(sec.name)}</div>`;
+      sec.items.forEach(it=>{ const u=it.parUnit==='loose'?(it.unit||'ea')+'s':'cases';
+        rows+=`<div class="prow"><div class="pname">${esc(nice(it.name))}<div class="pkg">in ${esc(u)}</div></div>${ORDER_DAYS.map(d=>{ const val=Number(it.pars[d])||0;
+          return `<input class="pin ${val>0?'':'zero'}" type="number" inputmode="decimal" min="0" step="any" data-pp="${it.id}|${d}" value="${fmtN(val)}" aria-label="${esc(nice(it.name))}, ${FULL[d]} par">`; }).join('')}</div>`; }); });
+    html+=`<div class="card"><div class="phead"><span>${esc(v.name)}</span>${ORDER_DAYS.map(d=>`<span>${FULL[d].slice(0,3)}</span>`).join('')}</div>${rows}</div>
+      <div class="hint" style="padding:0 4px 30px">Adding, renaming or removing items is in ⚙️ Setup.</div>`; }
+  host.innerHTML=html;
+  host.querySelectorAll('[data-pv]').forEach(b=>b.addEventListener('click',()=>{ ui.parsVendor=b.dataset.pv; renderPars(); window.scrollTo(0,0); }));
+  host.querySelectorAll('[data-pp]').forEach(el=>{
+    const [iid,d]=el.dataset.pp.split('|');
+    const apply=(final)=>{ const it=findItem(iid).it; if(!it) return; if(el.value===''&&!final) return;
+      const n=Math.max(0,Number(el.value)||0); if(final) el.value=fmtN(n);
+      if(Number(it.pars[d])===n) return; it.pars[d]=n; el.classList.toggle('zero',!(n>0)); save();
+      clearTimeout(parsFlashT); parsFlashT=setTimeout(()=>flash('Par saved'),700); };
+    el.addEventListener('input',()=>apply(false)); el.addEventListener('change',()=>apply(true)); el.addEventListener('blur',()=>apply(true));
+    el.addEventListener('focus',()=>el.select()); });
+}
+function switchTab(t){ ui.tab=t; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t)); ['count','orders','pars','history','setup'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none'); if(t==='count') renderCount(); else if(t==='orders') renderOrders(); else if(t==='pars') renderPars(); else if(t==='history') renderHistory(); else renderSetup(); }
 
 /* ============================================================ CLOUD SYNC ENGINE ============================================================
    Layout in Firestore:
@@ -1168,6 +1213,7 @@ function refreshTab(own){ if(document.getElementById('appScreen').style.display=
   if(ui.tab==='count'){ try{ refreshAllTotals(); }catch(e){ renderCount(); } }
   else if(ui.tab==='orders') renderOrders();
   else if(ui.tab==='history'){ if(!isTypingIn('tab-history')) renderHistory(); }
+  else if(ui.tab==='pars'){ if(!isTypingIn('tab-pars')) renderPars(); }
   else if(ui.tab==='setup'){ if(!(own||isTypingIn('tab-setup'))) renderSetup(); } }
 function applyRemoteStore(data, own){ if(!data) return; SYNC.applying=true;
   const collapsed={}; (state.vendors||[]).forEach(v=>{ if(v._collapsed) collapsed[v.id]=true; });
