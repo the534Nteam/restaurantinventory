@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="5">
+<meta name="app-build" content="6">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -37,6 +37,10 @@
   .daybtn:hover{border-color:var(--red);color:var(--red);transform:translateY(-1px)}
   .daybtn.today{border-color:var(--red);color:var(--red);box-shadow:0 0 0 3px rgba(200,16,46,.14)}
   .daybtn .tt{display:block;font-size:11px;font-weight:700;color:var(--red);margin-top:2px}
+  .modesep{margin:24px 0 10px;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .daybtn.alt{font-size:17px;border-style:dashed}
+  .daybtn.alt .tt{color:var(--muted);font-size:13px}
+  .daybtn.alt.today .tt{color:var(--red)}
   .start .setuplink{margin-top:20px;font-size:13px}.start .setuplink a{color:var(--muted);cursor:pointer;text-decoration:underline}
   header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--red);color:#fff;padding:10px 14px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
   .hrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -157,6 +161,9 @@
   .iorder b{display:block;font-size:28px;line-height:1.1}
   .iorder.zero{background:var(--sub);color:var(--muted);border:1px solid var(--line)}
   .iorder .uu{color:inherit;font-size:13px;text-transform:none}
+  .iorder .sub{font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;opacity:.9;margin-top:1px}
+  .modebar{margin:0 0 12px;padding:12px 14px;border-radius:12px;background:var(--order);border:1px solid var(--line);font-size:16px;line-height:1.4}
+  .mode-monthend .iorder,.mode-monthend .parmeta{display:none}
   .imeta{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:17px;color:var(--muted);margin:8px 0 10px}
   .imeta b{color:var(--ink)}
   .imeta .resetbtn{font-size:16px;padding:2px 8px;margin-left:2px}
@@ -209,6 +216,8 @@
     <div class="namefield"><label for="nameInput">Your name</label><select id="nameInput"></select></div>
     <div class="prompt">Which day are you ordering for?</div>
     <div class="daybtns" id="dayBtns"></div>
+    <div class="modesep">Other counts</div>
+    <div class="daybtns" id="modeBtns"></div>
     <div class="setuplink"><a id="goSetup">⚙️ Go to setup instead</a></div>
   </div>
 </div>
@@ -629,6 +638,22 @@ function totalLoose(it){ const c=cell(it.id); return num(c.c)*pc(it)+num(c.l); }
 function onHandParUnit(it){ return it.parUnit==='loose' ? totalLoose(it) : totalLoose(it)/pc(it); }
 function orderQty(it,day){ const need=effPar(it,day)-onHandParUnit(it); return need>1e-9?Math.ceil(need-1e-9):0; }
 function parULabel(it){ return it.parUnit==='loose'?(it.unit||'ea'):'cs'; }
+function plural(u,n){ u=u||'ea'; return (Math.abs(n-1)<1e-9||u==='ea'||/s$/.test(u))?u:u+'s'; }
+/* Quantities read in cases with the loose amount in parentheses: "15 cs (60 bags)".
+   Items without a case size (Setup "/case" = 1) stay in their own unit. */
+function qtyLabel(it,loose){ const p=pc(it);
+  if(p<=1) return it.parUnit==='loose'?`${fmtN(loose)} ${plural(it.unit,loose)}`:`${fmtN(loose)} cs`;
+  return `${fmtN(loose/p)} cs (${fmtN(loose)} ${plural(it.unit,loose)})`; }
+function orderLoose(it,q){ return it.parUnit==='loose'?q:q*pc(it); }
+function orderLabel(it,q){ return qtyLabel(it,orderLoose(it,q)); }
+/* count-screen modes: 'order' (Tue/Thu/Fri), 'protein' (Sunday spot check), 'monthend' (full count) */
+function inMode(it){ return ui.mode!=='protein'||!!it.protein; }
+function modeItems(v){ return v.items.filter(inMode); }
+function badgeInner(it,q){ const p=pc(it),loose=orderLoose(it,q),lbl=ui.mode==='protein'?'Tue order':'Order';
+  if(p<=1) return `<span>${lbl}</span><b>${fmtN(q)}</b><span class="uu">${it.parUnit==='loose'?esc(plural(it.unit,q)):'cs'}</span>`;
+  return `<span>${lbl}</span><b>${fmtN(loose/p)}</b><span class="uu">cs</span>${q>0?`<span class="sub">(${fmtN(loose)} ${esc(plural(it.unit,loose))})</span>`:''}`; }
+function vendorMeta(v,day){ const items=modeItems(v),n=ui.mode==='monthend'?0:items.filter(it=>orderQty(it,day)>0).length;
+  return `${items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; }
 function haveText(it,empty){ const c=cell(it.id),a=num(c.c),b=num(c.l); if(!a&&!b) return empty||'—'; const p=[]; if(a)p.push(a+' cs'); if(b)p.push(b+' '+(it.unit||'ea')); return p.join(' / '); }
 function methodBadge(m){ return m==='excel'?'<span class="badge b-excel">Excel form</span>':m==='web'?'<span class="badge b-web">Web portal</span>':'<span class="badge b-text">Text / email</span>'; }
 function flash(msg){ const f=document.getElementById('flash'); f.textContent=msg; f.classList.add('show'); clearTimeout(f._t); f._t=setTimeout(()=>f.classList.remove('show'),1800); }
@@ -653,13 +678,20 @@ function renderStart(){ const now=new Date();
   const todayKey=WEEK[now.getDay()],host=document.getElementById('dayBtns');
   host.innerHTML=ORDER_DAYS.map(d=>`<button class="daybtn ${d===todayKey?'today':''}" data-day="${d}">${FULL[d]}${d===todayKey?'<span class="tt">Today</span>':''}</button>`).join('');
   host.querySelectorAll('[data-day]').forEach(b=>b.addEventListener('click',()=>enterApp(b.dataset.day)));
+  const lastDay=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),monthEnd=now.getDate()>=lastDay-1||now.getDate()===1;
+  const mh=document.getElementById('modeBtns');
+  mh.innerHTML=`<button class="daybtn alt ${now.getDay()===0?'today':''}" data-mode="protein">🥩 Sunday protein count<span class="tt">Proteins only · previews Tuesday's order</span></button>
+    <button class="daybtn alt ${monthEnd?'today':''}" data-mode="monthend">📦 Month-end full inventory<span class="tt">Every item · Excel sheet for R365</span></button>`;
+  mh.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>enterApp('tue',b.dataset.mode)));
 }
 let clockTimer=null;
 function startClock(){ const tick=()=>{ const now=new Date(),bd=document.getElementById('bigDate'),bt=document.getElementById('bigTime'); if(bd)bd.textContent=fmtDate(now); if(bt)bt.textContent=fmtTime(now); const cd=document.getElementById('chipDate'); if(cd)cd.textContent=fmtDate(now).replace(/^\w+,?\s*/,''); }; tick(); clearInterval(clockTimer); clockTimer=setInterval(tick,15000); }
 
 /* NAV */
 function showStart(){ document.getElementById('startScreen').style.display=''; document.getElementById('appScreen').style.display='none'; renderStart(); }
-function enterApp(dayKey){ ui.day=dayKey;
+const MODE_LABEL={protein:'🥩 Protein count',monthend:'📦 Month-end count'};
+function enterApp(dayKey,mode){ ui.day=dayKey; ui.mode=mode||'order';
+  const ob=document.querySelector('nav button[data-tab="orders"]'); if(ob) ob.textContent=ui.mode==='order'?'📦 Orders':'📊 Summary';
   const locIn=document.getElementById('locInput'); if(locIn&&locIn.value){ switchLocation(locIn.value); }
   const nameIn=document.getElementById('nameInput'); if(nameIn){ state.userName=nameIn.value.trim(); } save();
   const loc=state.locations.find(l=>l.id===state.locationId)||state.locations[0];
@@ -667,25 +699,28 @@ function enterApp(dayKey){ ui.day=dayKey;
   if(SYNC.ready && SYNC.storeRef && SYNC.storeRef.id!==locDocId()) subscribeLocation();
   document.getElementById('startScreen').style.display='none'; document.getElementById('appScreen').style.display='';
   const who=document.getElementById('whoLabel'); if(state.userName){ who.textContent='👤 '+state.userName; who.style.display=''; } else who.style.display='none';
-  document.getElementById('chipDay').textContent=FULL[dayKey]; document.getElementById('chipDate').textContent=fmtDate(new Date()).replace(/^\w+,?\s*/,''); switchTab('count'); }
+  document.getElementById('chipDay').textContent=MODE_LABEL[ui.mode]||FULL[dayKey]; document.getElementById('chipDate').textContent=fmtDate(new Date()).replace(/^\w+,?\s*/,''); switchTab('count'); }
 
 /* COUNT */
 function renderCount(){
   const day=ui.day,host=document.getElementById('tab-count');
-  let html='';
+  host.className=ui.mode==='monthend'?'mode-monthend':'';
+  let html=ui.mode==='protein'?`<div class="modebar">🥩 <b>Sunday protein count.</b> Only proteins are listed. The red badges preview what Tuesday's order will need. Save it from the 📊 Summary tab.</div>`
+    :ui.mode==='monthend'?`<div class="modebar">📦 <b>Month-end full inventory.</b> Count every item, then save it and download the Excel sheet from the 📊 Summary tab. Nothing is ordered from this count.</div>`:'';
   state.vendors.forEach(v=>{
-    const collapsed=v._collapsed?'collapsed':'',secs=vendorSections(v),hasSections=secs.length>1||(secs[0]&&secs[0].name);
+    const secs=vendorSections(v).map(s=>({name:s.name,items:s.items.filter(inMode)})).filter(s=>s.items.length); if(!secs.length) return;
+    const collapsed=v._collapsed?'collapsed':'',hasSections=secs.length>1||(secs[0]&&secs[0].name);
     let rows='';
     secs.forEach(sec=>{
       if(hasSections&&sec.name) rows+=`<div class="secthead">${esc(sec.name)}</div>`;
       sec.items.forEach(it=>{
         const ct=coverTarget(it),par=effPar(it,day),q=orderQty(it,day),ul=parULabel(it),un=esc(it.unit||'ea');
-        rows+=`<div class="irow ${q>0?'toorder':''}" data-row="${it.id}">
+        rows+=`<div class="irow ${q>0&&ui.mode!=='monthend'?'toorder':''}" data-row="${it.id}">
           <div class="ihead">
             <div class="iname">${esc(nice(it.name))}<div class="pkg">${esc([it.sku,it.pkg,it.perCase>1?it.perCase+' per case':''].filter(Boolean).join(' · '))}</div></div>
-            <div class="iorder ${q>0?'':'zero'}" data-order="${it.id}"><span>Order</span><b>${q}</b><span class="uu">${ul}</span></div>
+            <div class="iorder ${q>0?'':'zero'}" data-order="${it.id}">${badgeInner(it,q)}</div>
           </div>
-          <div class="imeta"><span>Par <b>${fmtN(par)} ${ul}</b>${ct?`<span class="autotag" title="${coverDays()} days of use, from ${ct.src==='sales'?'sales forecast':'past counts'}">${coverDays()}d</span>`:''}</span>
+          <div class="imeta"><span class="parmeta">Par <b>${fmtN(par)} ${ul}</b>${ct?`<span class="autotag" title="${coverDays()} days of use, from ${ct.src==='sales'?'sales forecast':'past counts'}">${coverDays()}d</span>`:''}</span>
             <span>On hand <b class="have" data-have="${it.id}">${haveText(it)}</b> <button class="resetbtn" data-reset="${it.id}" title="Reset this item" aria-label="Reset ${esc(it.name)}">↺</button></span></div>
           <div class="addbox">
             <label class="cin"><input class="count" inputmode="decimal" data-item="${it.id}" data-k="c" placeholder="0" aria-label="Cases"><span>cases</span></label>
@@ -698,10 +733,10 @@ function renderCount(){
     });
     html+=`<div class="card vendor ${collapsed}" data-vid="${v.id}">
       <div class="vhead" data-toggle="${v.id}"><h2>${esc(v.name)}</h2>${methodBadge(v.method)}
-        <span class="meta" data-meta="${v.id}">${v.items.length} items</span><span class="chev">▾</span></div>
+        <span class="meta" data-meta="${v.id}">${modeItems(v).length} items</span><span class="chev">▾</span></div>
       <div class="vbody">${rows}</div></div>`;
   });
-  html+=`<div class="row" style="margin:4px 2px 24px"><button class="btn ghost sm" id="clearCounts">Clear all counts</button>
+  html+=`<div class="row" style="margin:4px 2px 24px"><button class="btn ghost sm" id="clearCounts">${ui.mode==='protein'?'Clear protein counts':'Clear all counts'}</button>
     <span class="hint" style="padding:0">Count each storage area, then tap <b>＋</b> to add it to the total. Order = par minus on hand.${state.autoPar?` Pars tagged <span class="autotag">${coverDays()}d</span> are set automatically to ${coverDays()} days of usage.`:''}</span></div>`;
   host.innerHTML=html; updateAllMeta();
 
@@ -713,9 +748,9 @@ function renderCount(){
   }
   function refreshItem(id){ const it=findItem(id).it,q=orderQty(it,ui.day);
     const h=host.querySelector('[data-have="'+id+'"]'); if(h) h.textContent=haveText(it);
-    const oc=host.querySelector('[data-order="'+id+'"]'); if(oc){ oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0); } updateAllMeta();
+    const oc=host.querySelector('[data-order="'+id+'"]'); if(oc){ oc.innerHTML=badgeInner(it,q); oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0&&ui.mode!=='monthend'); } updateAllMeta();
   }
-  function updateAllMeta(){ state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(!m) return; const n=toOrderCount(v,ui.day); m.innerHTML=`${v.items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; }); }
+  function updateAllMeta(){ state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m) m.innerHTML=vendorMeta(v,ui.day); }); }
   function doSub(id){
     const cIn=host.querySelector('input[data-item="'+id+'"][data-k="c"]'),lIn=host.querySelector('input[data-item="'+id+'"][data-k="l"]');
     const ac=num(cIn.value),al=num(lIn.value); if(!ac&&!al){ cIn.focus(); return; }
@@ -727,7 +762,10 @@ function renderCount(){
   host.querySelectorAll('input.count').forEach(inp=>inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(inp.dataset.item); }}));
   host.querySelectorAll('[data-reset]').forEach(b=>b.addEventListener('click',()=>{ const t=cell(b.dataset.reset); t.c=''; t.l=''; save(); pushCount(b.dataset.reset); refreshItem(b.dataset.reset); }));
   host.querySelectorAll('[data-toggle]').forEach(h=>h.addEventListener('click',()=>{ const v=state.vendors.find(x=>x.id===h.dataset.toggle); v._collapsed=!v._collapsed; h.closest('.vendor').classList.toggle('collapsed'); }));
-  document.getElementById('clearCounts').addEventListener('click',()=>askConfirm('Clear all on-hand counts?','Clear counts',()=>{ counts={}; save(); pushCountsClear(); renderCount(); }));
+  document.getElementById('clearCounts').addEventListener('click',()=>{
+    if(ui.mode==='protein') askConfirm('Clear the protein counts? Other items keep their counts.','Clear proteins',()=>{
+      state.vendors.forEach(v=>v.items.forEach(it=>{ if(it.protein){ const t=cell(it.id); t.c=''; t.l=''; pushCount(it.id); } })); save(); renderCount(); });
+    else askConfirm('Clear all on-hand counts?','Clear counts',()=>{ counts={}; save(); pushCountsClear(); renderCount(); }); });
 }
 
 /* ORDERS */
@@ -735,18 +773,45 @@ function buildTextOrder(v,day){
   let out=`PEPPER LUNCH — ${v.name} order\nOrder day: ${FULL[day]}\n`+(state.userName?`Counted by: ${state.userName}\n`:'')+`\n`,total=0;
   vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
     if(sec.name) out+=`— ${sec.name} —\n`;
-    lines.forEach(l=>{ const sku=l.it.sku?l.it.sku+'  ':''; out+=`${(l.q+' '+parULabel(l.it)).padStart(8,' ')}  ${sku}${l.it.name}\n`; total++; }); out+='\n'; });
+    lines.forEach(l=>{ const sku=l.it.sku?l.it.sku+'  ':''; out+=`${orderLabel(l.it,l.q).padEnd(20,' ')}  ${sku}${l.it.name}\n`; total++; }); out+='\n'; });
   if(!total) out+='(Nothing to order — all pars met.)\n'; else out+=`Total items: ${total}`;
   return out;
 }
+/* Summary tab for the Sunday protein count and the month-end count (nothing is ordered from these) */
+function renderModeSummary(){
+  const host=document.getElementById('tab-orders'),pro=ui.mode==='protein',now=new Date();
+  let cards='',counted=0,total=0;
+  state.vendors.forEach(v=>{ const items=modeItems(v); if(!items.length) return; let inner='';
+    vendorSections(v).forEach(sec=>{ const its=sec.items.filter(inMode); if(!its.length) return;
+      if(sec.name) inner+=`<div class="osec">${esc(sec.name)}</div>`;
+      its.forEach(it=>{ total++; const tl=totalLoose(it); if(tl>0) counted++; const q=pro?orderQty(it,'tue'):0;
+        inner+=`<div class="line"><span>${it.sku?'<span class="sku">'+esc(it.sku)+'</span> ':''}${esc(nice(it.name))}${q>0?` <span class="oh">Tuesday order at this count: ${esc(orderLabel(it,q))}</span>`:''}</span><span class="qty" style="color:var(--ink)">${tl>0?esc(qtyLabel(it,tl)):'0'}</span></div>`; }); });
+    cards+=`<div class="card"><div class="vhead" style="cursor:default"><h2>${esc(v.name)}</h2><span class="meta">${items.length} items</span></div><div class="summary">${inner}</div></div>`; });
+  const title=pro?'🥩 Sunday protein count':'📦 Month-end inventory, '+now.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  const sub=pro?'Proteins on hand now. The Tuesday figures are what the order would be at today\'s count; they grow as stock is used Sunday and Monday.'
+    :'Every item on hand, in cases with the loose amount in parentheses. Download the Excel sheet to enter the count in R365.';
+  host.innerHTML=`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><b>${esc(title)}</b><div class="hint" style="padding:4px 0 0">${sub} ${counted} of ${total} items have a count; blanks save as 0.</div></div>
+    <div class="row"><button class="btn sm" id="saveInv">💾 Save ${pro?'protein count':'month-end count'}</button>${pro?'':'<button class="btn sm gray" id="meXlsx">⬇️ Download Excel</button>'}</div></div></div></div>`+cards;
+  document.getElementById('saveInv').addEventListener('click',saveSnapshot);
+  const mx=document.getElementById('meXlsx'); if(mx) mx.addEventListener('click',downloadMonthEnd);
+}
+function downloadMonthEnd(){ const now=new Date(),loc=((state.locations||[]).find(l=>l.id===state.locationId)||{}).name||'';
+  const rows=[[{v:'PEPPER LUNCH — Month-end inventory'+(loc?' — '+loc:''),s:2}],[{v:'Counted '+fmtDate(now)+' at '+fmtTime(now)+(state.userName?'   By: '+state.userName:''),s:0}],[],
+    [{v:'VENDOR',s:1},{v:'ITEM #',s:1},{v:'ITEM',s:1},{v:'PACK',s:1},{v:'CASES COUNTED',s:1},{v:'LOOSE COUNTED',s:1},{v:'LOOSE UNIT',s:1},{v:'TOTAL',s:1},{v:'TOTAL UNIT',s:1}]];
+  state.vendors.forEach(v=>vendorSections(v).forEach(sec=>sec.items.forEach(it=>{ const c=cell(it.id),p=pc(it),tl=totalLoose(it),inCases=p>1||it.parUnit!=='loose';
+    rows.push([{v:v.name,s:3},{v:it.sku||'',s:3},{v:it.name,s:3},{v:it.pkg||'',s:3},{v:num(c.c),s:3},{v:num(c.l),s:3},{v:it.unit||'ea',s:3},{v:Math.round((inCases?tl/p:tl)*100)/100,s:3},{v:inCases?'cs':(it.unit||'ea'),s:3}]); })));
+  const bytes=buildXlsx('MONTH END',rows,[14,12,46,16,14,14,12,10,11]);
+  saveFile(`Month-End Inventory${loc?' '+loc:''} ${fmtFileDate(now)}.xlsx`,new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+}
 function renderOrders(){
+  if(ui.mode&&ui.mode!=='order'){ renderModeSummary(); return; }
   const day=ui.day,host=document.getElementById('tab-orders');
   let html=`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between"><div><b>Order summary</b> — ${FULL[day]}</div><div class="row"><button class="btn sm" id="saveInv">💾 Save this inventory</button>${IN_ARTIFACT?'':'<button class="btn sm ghost" id="printBtn">🖨️ Print all</button>'}</div></div></div></div>`;
   state.vendors.forEach(v=>{
     const recips=(v.recipients||'').trim()||(state.recipientsGlobal||'').trim(); let inner='',n=0;
     vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
       if(sec.name) inner+=`<div class="osec">${esc(sec.name)}</div>`;
-      inner+=lines.map(l=>{ n++; return `<div class="line"><span>${l.it.sku?'<span class="sku">'+esc(l.it.sku)+'</span> ':''}${esc(nice(l.it.name))} <span class="oh">Have ${haveText(l.it,'0')}</span></span><span class="qty">${l.q} ${parULabel(l.it)}</span></div>`; }).join('');
+      inner+=lines.map(l=>{ n++; return `<div class="line"><span>${l.it.sku?'<span class="sku">'+esc(l.it.sku)+'</span> ':''}${esc(nice(l.it.name))} <span class="oh">Have ${haveText(l.it,'0')}</span></span><span class="qty">${esc(orderLabel(l.it,l.q))}</span></div>`; }).join('');
     });
     const body=n?`<div class="summary">${inner}</div>`:`<div class="empty">Nothing to order for ${v.name} — all pars met for ${FULL[day]}.</div>`;
     let tools=`<button class="btn sm" data-copy="${v.id}">📋 Copy list</button>`;
@@ -763,10 +828,12 @@ function renderOrders(){
   document.getElementById('saveInv').addEventListener('click',saveSnapshot);
 }
 function saveSnapshot(){
-  const day=ui.day,now=new Date();
-  const snap={id:uid(), ts:now.toISOString(), dateStr:fmtDate(now), timeStr:fmtTime(now), day, name:state.userName||'', vendors:[]};
-  state.vendors.forEach(v=>{
-    const items=v.items.map(it=>({itemId:it.id, name:it.name, sku:it.sku||'', have:haveText(it,'0'), ohUnits:Math.round(onHandParUnit(it)*100)/100, par:effPar(it,day), order:orderQty(it,day), unit:parULabel(it)}));
+  const day=ui.day,now=new Date(),kind=ui.mode||'order',ordering=kind==='order';
+  /* protein counts keep only proteins, so items nobody counted on Sunday don't read as used up;
+     protein and month-end counts place no order */
+  const snap={id:uid(), ts:now.toISOString(), dateStr:fmtDate(now), timeStr:fmtTime(now), day:ordering?day:WEEK[now.getDay()], kind, name:state.userName||'', vendors:[]};
+  state.vendors.forEach(v=>{ const src=modeItems(v); if(!src.length) return;
+    const items=src.map(it=>({itemId:it.id, name:it.name, sku:it.sku||'', have:haveText(it,'0'), ohUnits:Math.round(onHandParUnit(it)*100)/100, par:ordering?effPar(it,day):0, order:ordering?orderQty(it,day):0, unit:parULabel(it)}));
     const toOrder=items.filter(i=>i.order>0).length;
     snap.vendors.push({name:v.name, method:v.method, toOrder, items});
   });
@@ -785,11 +852,11 @@ function copyText(t){ if(navigator.clipboard&&navigator.clipboard.writeText) nav
 function fallbackCopy(t){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} ta.remove(); }
 function printAll(day){
   let w=window.open('','_blank');
-  let h=`<html><head><title>Pepper Lunch Orders — ${FULL[day]}</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h1{color:#c8102e;margin:0 0 4px}h2{margin:22px 0 4px;border-bottom:2px solid #c8102e;padding-bottom:3px}h3{margin:12px 0 4px;color:#c8102e;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}td,th{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f3f3f3}.q{text-align:center;font-weight:bold;width:90px}.none{color:#666;font-style:italic}</style></head><body><h1>Pepper Lunch — Order Sheet</h1><div>Order day: <b>${FULL[day]}</b>${state.userName?' &nbsp; Counted by: <b>'+esc(state.userName)+'</b>':''} &nbsp; Printed: ${fmtDate(new Date())}</div>`;
+  let h=`<html><head><title>Pepper Lunch Orders — ${FULL[day]}</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h1{color:#c8102e;margin:0 0 4px}h2{margin:22px 0 4px;border-bottom:2px solid #c8102e;padding-bottom:3px}h3{margin:12px 0 4px;color:#c8102e;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}td,th{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f3f3f3}.q{text-align:center;font-weight:bold;width:160px;white-space:nowrap}.none{color:#666;font-style:italic}</style></head><body><h1>Pepper Lunch — Order Sheet</h1><div>Order day: <b>${FULL[day]}</b>${state.userName?' &nbsp; Counted by: <b>'+esc(state.userName)+'</b>':''} &nbsp; Printed: ${fmtDate(new Date())}</div>`;
   state.vendors.forEach(v=>{ h+=`<h2>${esc(v.name)} — ${v.method}</h2>`; let any=false;
     vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return; any=true;
       if(sec.name) h+=`<h3>${esc(sec.name)}</h3>`; h+='<table><tr><th>Order</th><th>SKU</th><th>Item</th><th>On hand</th></tr>';
-      lines.forEach(l=>{ h+=`<tr><td class="q">${l.q} ${parULabel(l.it)}</td><td>${esc(l.it.sku||'')}</td><td>${esc(l.it.name)}</td><td>${haveText(l.it,'0')}</td></tr>`; }); h+='</table>'; });
+      lines.forEach(l=>{ h+=`<tr><td class="q">${esc(orderLabel(l.it,l.q))}</td><td>${esc(l.it.sku||'')}</td><td>${esc(l.it.name)}</td><td>${haveText(l.it,'0')}</td></tr>`; }); h+='</table>'; });
     if(!any) h+='<div class="none">Nothing to order.</div>'; });
   h+='</body></html>'; w.document.write(h); w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
 }
@@ -811,9 +878,9 @@ function zipStore(files){ const chunks=[],central=[]; let offset=0; const u16=n=
 }
 function colRef(n){ let s=''; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
 function cX(r,c,val,style){ const ref=colRef(c)+r,s=style?` s="${style}"`:''; if(typeof val==='number'&&isFinite(val)) return `<c r="${ref}"${s}><v>${val}</v></c>`; const t=esc(val); if(t==='') return `<c r="${ref}"${s}/>`; return `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${t}</t></is></c>`; }
-function sheetXml(rows){ let body=''; rows.forEach((row,ri)=>{ let cells=''; row.forEach((cl,ci)=>{ const val=(cl&&typeof cl==='object')?cl.v:cl; const st=(cl&&typeof cl==='object')?cl.s:0; cells+=cX(ri+1,ci,val,st); }); body+=`<row r="${ri+1}">${cells}</row>`; });
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="12"/><col min="2" max="2" width="44"/><col min="3" max="3" width="16"/><col min="4" max="4" width="16"/><col min="5" max="5" width="10"/><col min="6" max="6" width="12"/></cols><sheetData>${body}</sheetData></worksheet>`; }
-function buildXlsx(sheetName,rows){
+function sheetXml(rows,widths){ let body=''; rows.forEach((row,ri)=>{ let cells=''; row.forEach((cl,ci)=>{ const val=(cl&&typeof cl==='object')?cl.v:cl; const st=(cl&&typeof cl==='object')?cl.s:0; cells+=cX(ri+1,ci,val,st); }); body+=`<row r="${ri+1}">${cells}</row>`; });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>${(widths||[12,44,16,16,10,12]).map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}"/>`).join("")}</cols><sheetData>${body}</sheetData></worksheet>`; }
+function buildXlsx(sheetName,rows,widths){
   const ct=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
   const rels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -824,7 +891,7 @@ function buildXlsx(sheetName,rows){
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${esc(sheetName).slice(0,31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
   const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FFC8102E"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFBFBFBF"/></left><right style="thin"><color rgb="FFBFBFBF"/></right><top style="thin"><color rgb="FFBFBFBF"/></top><bottom style="thin"><color rgb="FFBFBFBF"/></bottom></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/></cellXfs></styleSheet>`;
-  return zipStore([{name:'[Content_Types].xml',bytes:sB(ct)},{name:'_rels/.rels',bytes:sB(rels)},{name:'xl/workbook.xml',bytes:sB(wb)},{name:'xl/_rels/workbook.xml.rels',bytes:sB(wbr)},{name:'xl/styles.xml',bytes:sB(styles)},{name:'xl/worksheets/sheet1.xml',bytes:sB(sheetXml(rows))}]);
+  return zipStore([{name:'[Content_Types].xml',bytes:sB(ct)},{name:'_rels/.rels',bytes:sB(rels)},{name:'xl/workbook.xml',bytes:sB(wb)},{name:'xl/_rels/workbook.xml.rels',bytes:sB(wbr)},{name:'xl/styles.xml',bytes:sB(styles)},{name:'xl/worksheets/sheet1.xml',bytes:sB(sheetXml(rows,widths))}]);
 }
 function fmtFileDate(d){ const p=n=>String(n).padStart(2,'0'); return p(d.getMonth()+1)+'-'+p(d.getDate())+'-'+d.getFullYear(); }
 function cleanVendorName(n){ return String(n||'Order').replace(/\./g,'').replace(/\s+/g,' ').trim(); }
@@ -841,8 +908,10 @@ function downloadExcel(v,day){
   rows.push([{v:'ITEM',s:1},{v:'PRODUCT NAME',s:1},{v:'BRAND',s:1},{v:'PACK',s:1},{v:'CASE',s:1},{v:'EACH',s:1}]);
   vendorSections(v).forEach(sec=>{
     if(sec.name) rows.push([{v:sec.name,s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1}]);
-    sec.items.forEach(it=>{ const q=orderQty(it,day), isCase=it.parUnit!=='loose';
-      rows.push([{v:it.sku||'',s:3},{v:it.name,s:3},{v:it.brand||'',s:3},{v:it.pkg||'',s:3},{v:(isCase&&q?q:''),s:3},{v:(!isCase&&q?q:''),s:3}]); });
+    sec.items.forEach(it=>{ const q=orderQty(it,day),p=pc(it),loose=orderLoose(it,q); let cs='',ea='';
+      /* whole cases go in CASE, the leftover in EACH */
+      if(q>0){ if(p>1){ const w=Math.floor(loose/p+1e-9),r=Math.round((loose-w*p)*100)/100; cs=w||''; ea=r||''; } else if(it.parUnit==='loose') ea=q; else cs=q; }
+      rows.push([{v:it.sku||'',s:3},{v:it.name,s:3},{v:it.brand||'',s:3},{v:it.pkg||'',s:3},{v:cs,s:3},{v:ea,s:3}]); });
   });
   const bytes=buildXlsx('ORDER SHEET',rows);
   const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -1036,7 +1105,7 @@ function renderHistory(){
       body+='</table>';
     });
     html+=`<div class="card"><div class="vhead" data-htoggle="${idx}" style="cursor:pointer">
-        <div><h2 style="font-size:15px">${esc(s.dateStr)}</h2><div class="meta">${esc(FULL[s.day]||s.day)} · ${esc(s.timeStr||'')}${s.name?' · 👤 '+esc(s.name):''} · <b style="color:var(--red)">${totOrder} to order</b></div></div>
+        <div><h2 style="font-size:15px">${esc(s.dateStr)}</h2><div class="meta">${s.kind==='protein'?'<b>🥩 Protein count</b> · ':s.kind==='monthend'?'<b>📦 Month-end count</b> · ':''}${esc(FULL[s.day]||s.day)} · ${esc(s.timeStr||'')}${s.name?' · 👤 '+esc(s.name):''}${(s.kind||'order')==='order'?` · <b style="color:var(--red)">${totOrder} to order</b>`:''}</div></div>
         <button class="btn sm ghost" data-hdel="${idx}" style="margin-left:auto">Delete</button><span class="chev">▾</span></div>
       <div class="hbody" style="display:none;padding:12px 14px">${body||'<div class="empty">Nothing recorded.</div>'}</div></div>`;
   });
@@ -1122,10 +1191,10 @@ function applyRemoteIndex(data){ if(!data) return;
     if(!state.locations.some(l=>l.id===state.locationId)){ switchLocation(state.locations[0].id); } persistLocal(); }
   SYNC.passcode=(!SYNC.secure&&data.passcode!=null)?String(data.passcode):''; }
 function refreshAllTotals(){ const host=document.getElementById('tab-count'); if(!host) return; let ok=true;
-  state.vendors.forEach(v=>v.items.forEach(it=>{ const h=host.querySelector('[data-have="'+it.id+'"]'); if(!h){ ok=false; return; } h.textContent=haveText(it);
-    const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0); } }));
+  state.vendors.forEach(v=>modeItems(v).forEach(it=>{ const h=host.querySelector('[data-have="'+it.id+'"]'); if(!h){ ok=false; return; } h.textContent=haveText(it);
+    const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.innerHTML=badgeInner(it,q); oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0&&ui.mode!=='monthend'); } }));
   if(!ok){ renderCount(); return; }
-  state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m){ const n=toOrderCount(v,ui.day); m.innerHTML=`${v.items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; } }); }
+  state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m) m.innerHTML=vendorMeta(v,ui.day); }); }
 function locDocId(){ return 'loc_'+(state.locationId||'default'); }
 function scheduleResub(){ if(!SYNC.on) return; clearTimeout(resubTimer); resubTimer=setTimeout(()=>{ if(SYNC.on&&SYNC.ready) subscribeLocation(); }, 4000); }
 function unsubscribeAll(){ SYNC.unsub.forEach(u=>{try{u();}catch(e){}}); SYNC.unsub=[]; }
