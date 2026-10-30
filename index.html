@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="3">
+<meta name="app-build" content="4">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -145,6 +145,41 @@
   #askBox .dlg{background:var(--card);color:var(--ink);border-radius:14px;padding:20px;max-width:360px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.35)}
   #askBox .dlg p{margin:0 0 16px;font-weight:600}
   #askBox .row{justify-content:flex-end}
+  /* count list: one card per item, readable on a phone */
+  .secthead{background:var(--sect);color:var(--red);font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:8px 14px}
+  .irow{padding:12px 14px 14px;border-bottom:1px solid var(--line)}
+  .irow:last-child{border-bottom:none}
+  .irow.toorder{background:var(--order)}
+  .ihead{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+  .iname{font-weight:700;font-size:16px;line-height:1.3;overflow-wrap:anywhere}
+  .iname .pkg{font-weight:400;margin-top:3px;font-size:12px}
+  .iorder{flex:none;min-width:68px;text-align:center;border-radius:10px;padding:5px 8px;background:var(--red);color:#fff}
+  .iorder span{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .iorder b{display:block;font-size:24px;line-height:1.1}
+  .iorder.zero{background:var(--sub);color:var(--muted);border:1px solid var(--line)}
+  .iorder .uu{color:inherit;font-size:11px}
+  .imeta{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:15px;color:var(--muted);margin:8px 0 10px}
+  .imeta b{color:var(--ink)}
+  .imeta .resetbtn{font-size:16px;padding:2px 8px;margin-left:2px}
+  .addbox{display:flex;gap:8px;align-items:flex-start;justify-content:flex-start}
+  .cin{display:flex;flex-direction:column;align-items:stretch;gap:3px;flex:1;max-width:120px;text-align:center}
+  .cin span{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+  input.count{width:100%;height:48px;font-size:20px;padding:6px}
+  .addbtn,.subbtn{flex:none;width:54px;height:48px;font-size:26px;border-radius:10px}
+  .summary .line{padding:9px 0;font-size:15px}.summary .oh{display:block;margin-top:2px;font-size:12px}.summary .qty{font-size:17px}
+  .parlink{display:inline-block;margin-top:10px;font-weight:700;color:var(--red)}
+  @media(max-width:640px){
+    header{padding:8px 10px}
+    header .brand{display:none}
+    .hrow{gap:6px;flex-wrap:nowrap}
+    .loc,.who,.daychip{padding:6px 9px;font-size:13px}
+    .who{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .daychip small,.daychip .edit{display:none}
+    #syncTxt{display:none}.synced{padding:8px}
+    nav{margin-top:6px}
+    nav button{font-size:13px;padding:10px 2px}
+    .vhead{flex-wrap:wrap;row-gap:4px}
+  }
   @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 </head>
@@ -375,6 +410,120 @@ function seedConfig(){
   };
 }
 
+/* ============================================================
+   BUILD-TO PARS (Oct 2026). Tue / Thu / Fri pars for every item from the R365
+   purchase review, Sept 1 to Oct 28 2026. Each par is the stock wanted right after
+   that day's delivery, sized to last until the same vendor's next truck plus a buffer.
+   A 0 means no order that day (Wismettac has no Thursday truck, Paradise City and
+   Pepsi are ordered on Tuesday only). Applied once to every copy of the data.
+   ============================================================ */
+const PAR_REPORT_URL='https://pepper-lunch-moanalua-build-to-pars-for-k4r5.pages.grok.bot/';
+const PARS_V2=[
+  ["Wismettac","94250A","CHICKEN KARAAGE 1KG AJINOMOTO 6990103 F",2,0,2],
+  ["Wismettac","20526A","DRESSING DEEP ROASTED SESAME 64OZ QP",2,0,2],
+  ["Wismettac","30557","MISO MISHIMA INST MISO SOUP WHITE 3P",1,0,1],
+  ["Wismettac","25011","OIL SESAME OIL 56FL JPN SK",1,0,1],
+  ["Wismettac","01263A","RICE SEKKA 40LB 25",6,0,8],
+  ["Wismettac","88094","SHRIMP BREADED EBI FRY 5P SE&E ASIA SK F",1,0,1],
+  ["Wismettac","87379","PL BEEF CHUCK ROLL ANGUS CD 5LB 14200 F",2,0,2],
+  ["Wismettac","94129B","PL BEEF CHUCKROLL SLICED 2MM 10787 AAB F",6,0,8],
+  ["Wismettac","94132","PL BEEF HAMBURG STK 80G WCPM#14198",2,0,2],
+  ["Wismettac","94145","PL BEEF NEW YORK STK 8OZ AAB 10780 F",1,0,1],
+  ["Wismettac","94149","PL BEEF RIBEYE STK 8 OZ AAB 10783 F",1,0,1],
+  ["Wismettac","87380","PL BEEF SHORTPLATE NAVEL SC 4LB 14202 F",4,0,5],
+  ["Wismettac","87383","PL CHICKEN BREAST DICE MARINATE CK 5-7OZ F",4,0,5],
+  ["Wismettac","87384","PL CHICKEN THIGH MEAT 5-7OZ CUT COOKED F",2,0,2],
+  ["Wismettac","82620A","PL SALMON ATLN FILLET 2.5OZ SKINON USA F",1,0,1],
+  ["Wismettac","82628A","PL SALMON ATLN TRIM 1X1 BLS/SNLS USA F",3,0,4],
+  ["Wismettac","82682","PL SHRIMP COOKED P&D 31/40 TO USA F",3,0,4],
+  ["Wismettac","54134","CHOPSTICK B-R-9 PEPPER LUNCH",0.25,0,0.25],
+  ["Wismettac","15026","PEPPER LUNCH CAN W. KERNEL SWEET CORN",5,0,7],
+  ["Wismettac","17091","PEPPER LUNCH CREAM SAUCE F",2,0,2],
+  ["Wismettac","17090","PEPPER LUNCH CURRY SAUCE F",3,0,4],
+  ["Wismettac","21452","PEPPER LUNCH PEPPER PASTE NO BHT F",1,0,1],
+  ["Wismettac","17089","PEPPER LUNCH TERIYAKI SAUCE",1,0,1],
+  ["Wismettac","21316","PL SAUCE KIMCHI 83.2OZ OTAFUKU",2,0,2],
+  ["Wismettac","16482","PL SAUCE STEAK MILD 60.8OZ",1,0,1],
+  ["Wismettac","16481","PL SAUCE STEAK SPICY 60.8OZ",2,0,2],
+  ["Y. Hata","460150","BEEF BRISKET BURNT ENDS",0,0,0],
+  ["Y. Hata","273907","CARROTS IQF CRINKLE CUT",0.5,0.5,0.5],
+  ["Y. Hata","234803","FRIES BEER BATTERED",1,0.5,1.5],
+  ["Y. Hata","273905","GREEN BEANS WHOLE",0.5,0.5,0.5],
+  ["Y. Hata","455508","MOZZARELLA SHREDDED",4,3,7],
+  ["Y. Hata","42998","PARMESAN GRATED",1,1,2],
+  ["Y. Hata","130252","OIL CLEAR FRY CANOLA",1,0.5,1.5],
+  ["Y. Hata","422843","OIL EVOO (TIN)",0.5,0.5,0.5],
+  ["Y. Hata","117694","BACON TOPPING 1/4\" COOKED",1,1,1],
+  ["Y. Hata","53006","CAKE CHOCOLATE FLOURLESS GF",1,1,1],
+  ["Y. Hata","458965","CHEESECAKE YUZU INDIVIDUAL",1,1,1],
+  ["Y. Hata","73182","GARLIC FRIED",1,1,2],
+  ["Y. Hata","232695","PASTA SPAGHETTI 10\"",1,1,2],
+  ["Nari","","DISH SOAP",1,1,1],
+  ["Nari","","DISHWASHING SOAP",2,2,2],
+  ["Nari","","FLOOR CLEANER",1,1,1],
+  ["Nari","","GREEN ONIONS",5,5,5],
+  ["Nari","","KIMCHI",12,12,12],
+  ["Nari","","ONION RINGS",2,2,2],
+  ["Nari","","SANITIZER",1,1,1],
+  ["Nari","","SMALL OIL",1,1,1],
+  ["Nari","","TOILET CLEANER",1,1,1],
+  ["Nari","","PEPPER CORN",2,2,2],
+  ["Nari","","SESAME SEEDS",1,1,1],
+  ["Nari","","KALE",3,3,3],
+  ["Manson","","CHERRY TOMATOS",1,1,1],
+  ["Manson","","CUCUMBER",3,3,3],
+  ["Manson","","DICED CABBAGE SLAW MIX",1,1,1],
+  ["Manson","","EGG",1,1,1],
+  ["Manson","","SLICED MUSHROOMS",2,2,2],
+  ["Manson","","YELLOW ONIONS 50LBS",0.25,0.25,0.25],
+  ["Paradise City","","1OZ PORTION CUP CONTAINERS",1,0,0],
+  ["Paradise City","","1OZ PORTION CUP LIDS",1,0,0],
+  ["Paradise City","","20OZ CUP LIDS",1,0,0],
+  ["Paradise City","","20OZ PAPER CUPS",1,0,0],
+  ["Paradise City","","43x48 CLEAN CAN LINER",0.25,0,0],
+  ["Paradise City","","6x6 MFFP WHITE HINGED CONTAINERS",1,0,0],
+  ["Paradise City","","9\" INDIVIDUALLY WRAPPED COMPOSTABLE STRAWS",0.25,0,0],
+  ["Paradise City","","9x6 MFFP WHITE HINGED CONTAINERS",1,0,0],
+  ["Paradise City","","CUTLERY KIT",2,0,0],
+  ["Paradise City","","KARAT TALL NAPKINS",1,0,0],
+  ["Paradise City","","M VINYL GLOVES",0.5,0,0],
+  ["Paradise City","","PRINTER PAPER",0,0,0],
+  ["Paradise City","","TAKEOUT BAG 10x9x20",1,0,0],
+  ["Paradise City","","TO-GO BOX #1 30OZ",1,0,0],
+  ["Paradise City","","XL VINYL GLOVES",1.5,0,0],
+  ["Pepsi","","CO2",0,0,0],
+  ["Pepsi","","FRUIT PUNCH",1,0,0],
+  ["Pepsi","","LEMONADE",1,0,0],
+  ["Pepsi","","MOUNTAIN DEW",1,0,0],
+  ["Pepsi","","PEPSI",2,0,0],
+  ["Pepsi","","PEPSI ZERO",2,0,0],
+  ["Pepsi","","STARRY",1,0,0]
+];
+const NEW_ITEMS_V2=[
+  ['Y. Hata','FROZEN',['','FRIES SWEET POTATO','6/ 2.5 LB',0,{}],[1,1,1]],
+  ['Wismettac','Sauces & Supplies',['','PEPPER LUNCH BAGASSE BOWL','200 CT',0,{}],[1,0,1]],
+  ['Wismettac','Sauces & Supplies',['','PEPPER LUNCH BAGASSE LID','200 CT',0,{}],[1,0,1]],
+  ['Wismettac','Sauces & Supplies',['','PL LUNCHEON NAPKIN','',0,{}],[1,0,1]],
+];
+const VENDOR_NOTES_V2={
+  'Wismettac':['Enter these quantities into the vendor web portal (Add to Cart).','Enter these quantities into the vendor web portal (Add to Cart). Delivers Tue and Fri only, so Thursday orders nothing.'],
+  'Manson':['','Delivered Tue, Thu and Sat in September. Use the Friday order for the Saturday delivery.'],
+  'Paradise City':['','Delivers about once a week. Order on Tuesday; Thursday and Friday order nothing.'],
+  'Pepsi':['','Delivers every other Wednesday. Count and order on the Tuesday before a Pepsi delivery. Pars are a starting point.'],
+  'Nari':['','Nari / Costco run. Pars are placeholders until the shopping day and weekly use are set.'],
+};
+function applyParsV2(){
+  const norm=x=>String(x||'').trim().toUpperCase();
+  PARS_V2.forEach(([vn,sku,name,tue,thu,fri])=>{ const v=state.vendors.find(x=>x.name===vn); if(!v) return;
+    const it=(sku&&v.items.find(x=>norm(x.sku)===norm(sku)))||v.items.find(x=>norm(x.name)===norm(name)); if(!it) return;
+    it.pars={tue,thu,fri}; });
+  NEW_ITEMS_V2.forEach(([vn,sec,args,p])=>{ const v=state.vendors.find(x=>x.name===vn); if(!v) return;
+    if(v.items.some(x=>norm(x.name)===norm(args[1]))) return;
+    const it=mk.apply(null,args); it.section=sec; it.pars={tue:p[0],thu:p[1],fri:p[2]}; v.items.push(it); });
+  Object.keys(VENDOR_NOTES_V2).forEach(vn=>{ const v=state.vendors.find(x=>x.name===vn),[from,to]=VENDOR_NOTES_V2[vn];
+    if(v&&String(v.note||'').trim()===from) v.note=to; });
+  state.autoPar=false; state.parsVersion=2; }
+
 /* counts / history / sales belong to the current location; byLoc parks the other locations' copies
    so offline use keeps each store separate (with cloud sync, each location has its own document). */
 let state,counts,history,sales={},byLoc={},ui={tab:'count',day:null};
@@ -384,12 +533,13 @@ function load(){ let o=null; try{ const raw=localStorage.getItem(STORE_KEY); if(
   if(!state.locations||!state.locations.length) state.locations=[{id:'moanalua',name:'Moanalua'}];
   if(!state.locationId||!state.locations.some(l=>l.id===state.locationId)) state.locationId=state.locations[0].id;
   migrate(); }
-function migrate(){
+function migrate(){ let changed=false;
   if(!Array.isArray(state.staff)||!state.staff.length) state.staff=DEFAULT_STAFF.slice();
   if(typeof state.autoPar!=='boolean') state.autoPar=true;
   if(!(Number(state.coverDays)>0)) state.coverDays=DEFAULT_COVER_DAYS;
   (state.vendors||[]).forEach(v=>{ if(v.customerNo===undefined&&v.method==='excel'&&/hata/i.test(v.name||'')){ v.customerNo='847089'; v.sheetNote='Submit by 12 noon the day before delivery (routed Tue & Fri). Qty is in CASE or EACH.'; } });
-  (history||[]).forEach(snapId); invalidateModel(); }
+  if((Number(state.parsVersion)||0)<2&&Array.isArray(state.vendors)){ applyParsV2(); changed=true; }
+  (history||[]).forEach(snapId); invalidateModel(); return changed; }
 function snapId(s){ if(s&&!s.id) s.id='h'+String(s.ts||Date.now()).replace(/\D/g,''); return s; }
 function persistLocal(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify({config:state,counts,history,sales,byLoc})); }catch(e){} }
 function save(){ invalidateModel(); persistLocal(); if(SYNC.on&&!SYNC.applying) schedulePush(); }
@@ -460,7 +610,8 @@ function coverTarget(it){ if(!state.autoPar) return null; const mm=usageModel()[
   const n=coverDays(),fc=mm.perDollar!=null?salesForecast(n):null;
   const need=(fc&&fc.total>0)?mm.perDollar*fc.total:mm.perDay*n;
   return {target:Math.round(need*100)/100,src:(fc&&fc.total>0)?'sales':'counts',perDay:(fc&&fc.total>0)?need/n:mm.perDay}; }
-function effPar(it,day){ const c=coverTarget(it); return c?c.target:(Number(it.pars[day])||0); }
+function noTruck(it,day){ return !(Number(it.pars[day])>0) && ORDER_DAYS.some(d=>Number(it.pars[d])>0); }
+function effPar(it,day){ if(noTruck(it,day)) return 0; const c=coverTarget(it); return c?c.target:(Number(it.pars[day])||0); }
 function fmtN(n){ return String(Math.round((Number(n)||0)*100)/100); }
 function money(n){ return '$'+Math.round(n).toLocaleString(); }
 
@@ -520,33 +671,32 @@ function renderCount(){
     const collapsed=v._collapsed?'collapsed':'',secs=vendorSections(v),hasSections=secs.length>1||(secs[0]&&secs[0].name);
     let rows='';
     secs.forEach(sec=>{
-      if(hasSections&&sec.name) rows+=`<tr class="sectionrow"><td colspan="6">${esc(sec.name)}</td></tr>`;
+      if(hasSections&&sec.name) rows+=`<div class="secthead">${esc(sec.name)}</div>`;
       sec.items.forEach(it=>{
-        const ct=coverTarget(it),par=ct?ct.target:(it.pars[day]||0),q=orderQty(it,day),ul=parULabel(it);
-        rows+=`<tr class="${q>0?'toorder':''}" data-row="${it.id}">
-          <td class="hide-m"><span class="sku">${esc(it.sku||'—')}</span></td>
-          <td><div class="itemname">${esc(it.name)}</div><div class="pkg hide-m">${esc(it.pkg||'')}${it.perCase>1?' · '+it.perCase+'/case':''}</div></td>
-          <td class="num par">${fmtN(par)} ${ul}${ct?`<span class="autotag" title="${coverDays()} days of use, from ${ct.src==='sales'?'sales forecast':'past counts'}">${coverDays()}d</span>`:''}</td>
-          <td class="num"><div class="addbox">
-            <input class="count" inputmode="decimal" data-item="${it.id}" data-k="c" placeholder="cs">
-            <input class="count" inputmode="decimal" data-item="${it.id}" data-k="l" placeholder="${esc((it.unit||'ea').slice(0,3))}">
-            <button class="subbtn" data-sub="${it.id}" title="Subtract from total">−</button>
-            <button class="addbtn" data-add="${it.id}" title="Add to on-hand total">＋</button>
-          </div><div class="addlabels"><span>case</span><span>${esc(it.unit||'ea')}</span><span></span><span></span></div></td>
-          <td class="num"><span class="have" data-have="${it.id}">${haveText(it)}</span> <button class="resetbtn" data-reset="${it.id}" title="Reset this item">↺</button></td>
-          <td class="num order-cell ${q>0?'':'zero'}" data-order="${it.id}"><b>${q}</b> <span class="uu">${ul}</span></td>
-        </tr>`;
+        const ct=coverTarget(it),par=effPar(it,day),q=orderQty(it,day),ul=parULabel(it),un=esc(it.unit||'ea');
+        rows+=`<div class="irow ${q>0?'toorder':''}" data-row="${it.id}">
+          <div class="ihead">
+            <div class="iname">${esc(it.name)}<div class="pkg">${esc([it.sku,it.pkg,it.perCase>1?it.perCase+' per case':''].filter(Boolean).join(' · '))}</div></div>
+            <div class="iorder ${q>0?'':'zero'}" data-order="${it.id}"><span>Order</span><b>${q}</b><span class="uu">${ul}</span></div>
+          </div>
+          <div class="imeta"><span>Par <b>${fmtN(par)} ${ul}</b>${ct?`<span class="autotag" title="${coverDays()} days of use, from ${ct.src==='sales'?'sales forecast':'past counts'}">${coverDays()}d</span>`:''}</span>
+            <span>On hand <b class="have" data-have="${it.id}">${haveText(it)}</b> <button class="resetbtn" data-reset="${it.id}" title="Reset this item" aria-label="Reset ${esc(it.name)}">↺</button></span></div>
+          <div class="addbox">
+            <label class="cin"><input class="count" inputmode="decimal" data-item="${it.id}" data-k="c" placeholder="0" aria-label="Cases"><span>cases</span></label>
+            <label class="cin"><input class="count" inputmode="decimal" data-item="${it.id}" data-k="l" placeholder="0" aria-label="${un}"><span>${un}</span></label>
+            <button class="subbtn" data-sub="${it.id}" title="Subtract from total" aria-label="Subtract">−</button>
+            <button class="addbtn" data-add="${it.id}" title="Add to on-hand total" aria-label="Add">＋</button>
+          </div>
+        </div>`;
       });
     });
     html+=`<div class="card vendor ${collapsed}" data-vid="${v.id}">
       <div class="vhead" data-toggle="${v.id}"><h2>${esc(v.name)}</h2>${methodBadge(v.method)}
         <span class="meta" data-meta="${v.id}">${v.items.length} items</span><span class="chev">▾</span></div>
-      <div class="vbody"><table><thead><tr>
-        <th class="hide-m">SKU</th><th>Item</th><th class="num">Par</th><th class="num">Add count</th><th class="num">On hand</th><th class="num">Order</th>
-      </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      <div class="vbody">${rows}</div></div>`;
   });
   html+=`<div class="row" style="margin:4px 2px 24px"><button class="btn ghost sm" id="clearCounts">Clear all counts</button>
-    <span class="hint" style="padding:0">Type a location's count, press <b>＋</b> (or Enter) to add it in — repeat per storage area. Order = par − on hand.${state.autoPar?` Pars tagged <span class="autotag">${coverDays()}d</span> are set automatically to ${coverDays()} days of usage.`:''}</span></div>`;
+    <span class="hint" style="padding:0">Count each storage area, then tap <b>＋</b> to add it to the total. Order = par minus on hand.${state.autoPar?` Pars tagged <span class="autotag">${coverDays()}d</span> are set automatically to ${coverDays()} days of usage.`:''}</span></div>`;
   host.innerHTML=html; updateAllMeta();
 
   function doAdd(id){
@@ -557,7 +707,7 @@ function renderCount(){
   }
   function refreshItem(id){ const it=findItem(id).it,q=orderQty(it,ui.day);
     const h=host.querySelector('[data-have="'+id+'"]'); if(h) h.textContent=haveText(it);
-    const oc=host.querySelector('[data-order="'+id+'"]'); if(oc){ oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('tr').classList.toggle('toorder',q>0); } updateAllMeta();
+    const oc=host.querySelector('[data-order="'+id+'"]'); if(oc){ oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0); } updateAllMeta();
   }
   function updateAllMeta(){ state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(!m) return; const n=toOrderCount(v,ui.day); m.innerHTML=`${v.items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; }); }
   function doSub(id){
@@ -747,7 +897,9 @@ function renderSetup(){
   <div class="card"><div class="setup-sec"><h3>Store locations</h3><div class="sub">Chosen on the start screen and shown at the top of every page.</div>
     <div id="locList">${state.locations.map(l=>`<div class="row" style="margin-bottom:6px"><input data-locname="${esc(l.id)}" value="${esc(l.name)}" style="flex:1;min-width:160px;padding:8px;border:1px solid var(--line);border-radius:8px">${state.locations.length>1?`<button class="x" data-locdel="${esc(l.id)}" title="Delete location">✕</button>`:''}</div>`).join('')}</div>
     <button class="btn ghost sm" id="addLoc" style="margin-top:6px">+ Add location</button></div></div>
-  <div class="card"><div class="setup-sec"><h3>Order targets</h3><div class="sub">Sets each item's par to cover a number of days of real usage, worked out from your saved inventories (and daily sales, if entered on the 🕓 History tab). Items without enough history keep their manual par below.</div>
+  <div class="card"><div class="setup-sec"><h3>Order targets</h3><div class="sub">Pars below are the build-to pars from the October 2026 purchase review (R365, Sept 1 to Oct 28). Each one is the stock you want right after that day's delivery, sized to last until the vendor's next truck. A par of 0 on a day means nothing is ordered that day.</div>
+    <a class="parlink" href="${PAR_REPORT_URL}" target="_blank" rel="noopener">Open the par report ↗</a>
+    <div class="sub" style="margin-top:14px">Automatic pars replace these with ${coverDays()} days of usage worked out from your saved inventories, once there's enough history. Days with a 0 par still order nothing.</div>
     <div class="row" style="gap:14px"><label class="row" style="gap:6px;font-weight:700"><input type="checkbox" id="autoParIn" ${state.autoPar?'checked':''}> Automatic pars</label>
     <label class="row" style="gap:6px">Days of product to keep on hand <input type="number" id="coverIn" min="1" max="21" step="1" value="${coverDays()}" style="width:64px;padding:6px;border:1px solid var(--line);border-radius:6px"></label></div></div></div>
   <div class="card"><div class="setup-sec"><h3>Staff</h3><div class="sub">Names shown in the "Your name" list on the start screen. One per line.</div>
@@ -901,11 +1053,11 @@ function switchTab(t){ ui.tab=t; document.querySelectorAll('nav button').forEach
      settings/status               {passcodeSet:true} once a passcode exists (readable, so the gate knows what to ask)
    Setup changes are sent per field, and only the fields that changed, so two people editing
    different things don't overwrite each other. Daily sales are sent one day at a time. */
-const CONFIG_KEYS=['vendors','recipientsGlobal','staff','autoPar','coverDays'];
+const CONFIG_KEYS=['vendors','recipientsGlobal','staff','autoPar','coverDays','parsVersion'];
 const PASS_KEY='pepperlunch_passok';
 let pushTimer=null,resubTimer=null;
 function ser(v){ return JSON.stringify(v,(k,x)=>k.charAt(0)==='_'?undefined:x); }
-function localVal(k){ return k==='coverDays'?coverDays():k==='autoPar'?!!state.autoPar:k==='recipientsGlobal'?(state.recipientsGlobal||''):k==='staff'?(state.staff||[]):state[k]; }
+function localVal(k){ return k==='coverDays'?coverDays():k==='autoPar'?!!state.autoPar:k==='recipientsGlobal'?(state.recipientsGlobal||''):k==='staff'?(state.staff||[]):k==='parsVersion'?(Number(state.parsVersion)||0):state[k]; }
 function isDirty(k){ return SYNC.last[k]!==undefined && ser(localVal(k))!==SYNC.last[k]; }
 function schedulePush(){ if(!SYNC.on) return; clearTimeout(pushTimer); pushTimer=setTimeout(pushConfig,600); }
 function syncErr(e){ if(e&&e.code==='permission-denied') return lostAccess(); setSyncChip('err'); }
@@ -950,10 +1102,11 @@ function applyRemoteStore(data, own){ if(!data) return; SYNC.applying=true;
   if(Array.isArray(data.staff)&&data.staff.length&&!isDirty('staff')){ state.staff=data.staff; SYNC.last.staff=ser(data.staff); }
   if(typeof data.autoPar==='boolean'&&!isDirty('autoPar')){ state.autoPar=data.autoPar; SYNC.last.autoPar=ser(data.autoPar); }
   if(Number(data.coverDays)>0&&!isDirty('coverDays')){ state.coverDays=Number(data.coverDays); SYNC.last.coverDays=ser(state.coverDays); }
+  if(Array.isArray(data.vendors)&&!isDirty('parsVersion')){ state.parsVersion=Number(data.parsVersion)||0; SYNC.last.parsVersion=ser(state.parsVersion); }
   if(data.counts&&typeof data.counts==='object') counts=data.counts;
   if(data.sales&&typeof data.sales==='object'){ const pending=SYNC.lastSales&&ser(SYNC.lastSales)!==ser(sales); if(!pending){ sales=data.sales; SYNC.lastSales=Object.assign({},sales); } }
   if(Array.isArray(data.history)&&data.history.length){ if(!history.length) history=data.history.slice(); migrateHistoryArray(data.history); }
-  migrate(); persistLocal(); SYNC.applying=false; refreshTab(own); }
+  const changed=migrate(); persistLocal(); SYNC.applying=false; if(changed) schedulePush(); refreshTab(own); }
 function applyRemoteHistory(qs){ SYNC.applying=true;
   const remote=qs.docs.map(d=>Object.assign({id:d.id},d.data()));
   if(remote.length||!SYNC.migrating) history=remote;
@@ -964,7 +1117,7 @@ function applyRemoteIndex(data){ if(!data) return;
   SYNC.passcode=(!SYNC.secure&&data.passcode!=null)?String(data.passcode):''; }
 function refreshAllTotals(){ const host=document.getElementById('tab-count'); if(!host) return; let ok=true;
   state.vendors.forEach(v=>v.items.forEach(it=>{ const h=host.querySelector('[data-have="'+it.id+'"]'); if(!h){ ok=false; return; } h.textContent=haveText(it);
-    const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('tr').classList.toggle('toorder',q>0); } }));
+    const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.querySelector('b').textContent=q; oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0); } }));
   if(!ok){ renderCount(); return; }
   state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m){ const n=toOrderCount(v,ui.day); m.innerHTML=`${v.items.length} items${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; } }); }
 function locDocId(){ return 'loc_'+(state.locationId||'default'); }
