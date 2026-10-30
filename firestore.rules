@@ -17,7 +17,7 @@ service cloud.firestore {
       return request.auth != null && exists(m) && get(m).data.code == passcode();
     }
     function goodCode(c) {
-      return c is string && c.matches('[0-9]{6,12}');
+      return c is string && c.matches('[0-9]{5,12}');
     }
 
     match /stores/{doc=**} {

@@ -38,7 +38,7 @@ to remember it entered the passcode.
 
 ## Step 4: Set the store passcode
 1. Right after publishing, open the app link yourself.
-2. It asks you to **choose a store passcode**. Use 6 or more digits. 8 is better.
+2. It asks you to **choose a store passcode**. Use 5 or more digits. More is safer.
    The first passcode entered becomes the store passcode, which is why you do this
    right away.
 3. Give staff the link and the passcode. Each phone enters it once.

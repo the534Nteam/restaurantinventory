@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="10">
+<meta name="app-build" content="11">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -1088,7 +1088,7 @@ function renderSetup(){
   <div class="card"><div class="setup-sec"><h3>Staff</h3><div class="sub">Names shown in the "Your name" list on the start screen. One per line.</div>
     <div class="field"><textarea id="staffIn" rows="5">${esc((state.staff||[]).join('\n'))}</textarea></div></div></div>
   ${syncEnabled()?(SYNC.secure?`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Connected and secured. The database only lets in devices that entered the store passcode, and everyone sees the same live data per location.</div>
-    <div class="row"><input id="newPass" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New passcode (6+ digits)" style="width:200px;padding:8px;border:1px solid var(--line);border-radius:8px"><button class="btn sm" id="changePass">Change passcode</button></div>
+    <div class="row"><input id="newPass" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New passcode (5+ digits)" style="width:200px;padding:8px;border:1px solid var(--line);border-radius:8px"><button class="btn sm" id="changePass">Change passcode</button></div>
     <div class="hint" style="padding:6px 0 0">Changing it signs out every other phone. Staff then enter the new passcode once.</div></div></div>`:`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Connected, but the database is not locked down yet. Follow CLOUD-SYNC-SETUP.md (turn on anonymous sign-in and publish the security rules) to secure it.</div>
     <div class="field"><label>Store passcode (staff enter this once per device)</label><input id="passInput" value="${esc(SYNC.passcode||'')}" placeholder="e.g. 1234" inputmode="numeric"></div>
     <div class="hint" style="padding:0">Leave blank for no passcode. Changing it will prompt everyone to re-enter on their next open.</div></div></div>`):`<div class="card"><div class="setup-sec"><h3>Cloud sync</h3><div class="sub">Not connected. This copy runs offline (data stays on this device). Add your Firebase config to the file to enable shared sync.</div></div></div>`}
@@ -1402,7 +1402,7 @@ async function showGate(){ document.getElementById('gateScreen').style.display='
   inp.value=''; document.getElementById('gateErr').textContent=''; SYNC.creating=false;
   msg.textContent='Enter the store passcode to access the shared inventory.'; btn.textContent='Unlock';
   if(SYNC.uid){ try{ const st=await SYNC.db.collection('settings').doc('status').get();
-    if(!st.exists){ SYNC.creating=true; msg.textContent='First-time setup: choose a store passcode (6 or more digits). Staff will enter it once on each phone.'; btn.textContent='Set passcode'; } }catch(e){} }
+    if(!st.exists){ SYNC.creating=true; msg.textContent='First-time setup: choose a store passcode (5 or more digits). Staff will enter it once on each phone.'; btn.textContent='Set passcode'; } }catch(e){} }
   setTimeout(()=>inp.focus(),120); }
 async function joinWith(code){ try{ await memberRef().set({code,name:state.userName||'',at:firebase.firestore.FieldValue.serverTimestamp()}); }catch(e){ return false; }
   SYNC.secure=true; return (await probe())!=='no'; }
@@ -1411,7 +1411,7 @@ async function createPasscode(code){ const b=SYNC.db.batch(),st=SYNC.db.collecti
   try{ await b.commit(); return true; }catch(e){ return false; } }
 async function tryUnlock(){ const inp=document.getElementById('gateInput'),err=document.getElementById('gateErr'),btn=document.getElementById('gateBtn');
   const code=String(inp.value).trim(); if(!code) return;
-  if(SYNC.creating&&!/^\d{6,}$/.test(code)){ err.textContent='Use 6 or more digits'; return; }
+  if(SYNC.creating&&!/^\d{5,}$/.test(code)){ err.textContent='Use 5 or more digits'; return; }
   btn.disabled=true; err.textContent='Checking…';
   let ok=false;
   if(SYNC.uid){ if(SYNC.creating) ok=(await createPasscode(code))&&(await joinWith(code)); else ok=await joinWith(code); }
@@ -1419,7 +1419,7 @@ async function tryUnlock(){ const inp=document.getElementById('gateInput'),err=d
   btn.disabled=false;
   if(ok){ err.textContent=''; if(SYNC.creating) flash('Store passcode set'); startSession(); }
   else { SYNC.secure=false; err.textContent=SYNC.creating?'Could not set the passcode. Check your connection.':'Incorrect passcode'; inp.value=''; inp.focus(); } }
-async function changePasscode(code){ if(!/^\d{6,}$/.test(code)){ flash('Use 6 or more digits'); return; }
+async function changePasscode(code){ if(!/^\d{5,}$/.test(code)){ flash('Use 5 or more digits'); return; }
   try{ await SYNC.db.collection('settings').doc('passcode').set({code}); await memberRef().set({code,name:state.userName||'',at:firebase.firestore.FieldValue.serverTimestamp()});
     flash('Passcode changed. Other phones will ask for it.'); renderSetup(); }
   catch(e){ flash('Could not change the passcode ('+(e.code||'error')+')'); } }
