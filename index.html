@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <title>Pepper Lunch Inventory</title>
-<meta name="app-build" content="9">
+<meta name="app-build" content="10">
 
 <style>
   /* Layout: sticky red header + tabbed cards; brand red and Pepper Lunch yellow on warm neutrals */
@@ -90,6 +90,11 @@
   .summary{padding:12px 14px}
   .osec{font-weight:800;color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 2px}
   .summary .line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}
+  .summary .oline{align-items:center}.summary .oline.edited{background:var(--order);margin:0 -8px;padding:6px 8px;border-radius:8px}.summary .oline.skip .qty{color:var(--muted);font-weight:600}
+  .summary .sugg{display:inline-flex;align-items:center;gap:4px;font-weight:700;color:#b45309}
+  .oqbox{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}.oqbox .qty{font-size:12px}
+  .oqin{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--muted)}input.count.oq{width:62px;height:40px}
+  .addlinewrap{padding:4px 14px 10px}.addline{width:100%;max-width:360px;min-height:40px;border:1px dashed var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-weight:600;padding:6px 10px}
   .summary .line:last-child{border-bottom:none}.summary .qty{font-weight:800;color:var(--red);white-space:nowrap}.summary .oh{font-size:11px;color:var(--muted)}
   .empty{padding:24px;text-align:center;color:var(--muted)}
   .setup-sec{padding:14px}.setup-sec h3{margin:0 0 4px}.setup-sec .sub{color:var(--muted);font-size:15px;margin-bottom:10px}
@@ -572,10 +577,12 @@ function applyFixesV3(){
   state.parsVersion=3; }
 
 /* counts / history / sales belong to the current location; byLoc parks the other locations' copies
-   so offline use keeps each store separate (with cloud sync, each location has its own document). */
-let state,counts,history,sales={},byLoc={},ui={tab:'count',day:null};
+   so offline use keeps each store separate (with cloud sync, each location has its own document).
+   orderAdj holds the order amounts staff typed on the Orders tab (item id -> qty in par units);
+   an item without one orders the suggested amount. */
+let state,counts,history,sales={},byLoc={},orderAdj={},ui={tab:'count',day:null};
 function load(){ let o=null; try{ const raw=localStorage.getItem(STORE_KEY); if(raw) o=JSON.parse(raw); }catch(e){}
-  if(o&&o.config){ state=o.config; counts=o.counts||{}; history=o.history||[]; sales=o.sales||{}; byLoc=o.byLoc||{}; }
+  if(o&&o.config){ state=o.config; counts=o.counts||{}; history=o.history||[]; sales=o.sales||{}; byLoc=o.byLoc||{}; orderAdj=o.orderAdj||{}; }
   if(!state) state=seedConfig(); if(!counts) counts={}; if(!history) history=[];
   if(!state.locations||!state.locations.length) state.locations=[{id:'moanalua',name:'Moanalua'}];
   if(!state.locationId||!state.locations.some(l=>l.id===state.locationId)) state.locationId=state.locations[0].id;
@@ -589,12 +596,12 @@ function migrate(){ let changed=false;
   if((Number(state.parsVersion)||0)<3&&Array.isArray(state.vendors)){ applyFixesV3(); changed=true; }
   (history||[]).forEach(snapId); invalidateModel(); return changed; }
 function snapId(s){ if(s&&!s.id) s.id='h'+String(s.ts||Date.now()).replace(/\D/g,''); return s; }
-function persistLocal(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify({config:state,counts,history,sales,byLoc})); }catch(e){} }
+function persistLocal(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify({config:state,counts,history,sales,byLoc,orderAdj})); }catch(e){} }
 function save(){ invalidateModel(); persistLocal(); if(SYNC.on&&!SYNC.applying) schedulePush(); }
 function switchLocation(newId){ if(!newId||newId===state.locationId) return;
   if(SYNC.ready){ clearTimeout(pushTimer); pushConfig(); }
-  byLoc[state.locationId]={counts,history,sales};
-  const d=byLoc[newId]||{}; counts=d.counts||{}; history=d.history||[]; sales=d.sales||{}; delete byLoc[newId];
+  byLoc[state.locationId]={counts,history,sales,orderAdj};
+  const d=byLoc[newId]||{}; counts=d.counts||{}; history=d.history||[]; sales=d.sales||{}; orderAdj=d.orderAdj||{}; delete byLoc[newId];
   state.locationId=newId; invalidateModel(); if(SYNC.ready) subscribeLocation(); }
 
 /* In-page confirm: the claude.ai viewer blocks window.confirm(), so ask inside the page. */
@@ -628,7 +635,9 @@ async function saveFile(filename,blob){
 /* ============================================================
    USAGE + DAYS OF COVER
    Usage between two saved inventories = (earlier on hand + earlier order) − later on hand,
-   divided by the days between them. With daily sales entered, usage is also tied to sales
+   divided by the days between them. Only order counts that recorded the real order (actual:true)
+   start a cycle: older snapshots stored the suggestion, which staff often didn't order, and that
+   inflated usage many times over. Protein and month-end counts place no order and are skipped. With daily sales entered, usage is also tied to sales
    dollars, so a busy week ahead (forecast from the same weekdays recently) raises the target.
    Target on hand = usage over the next N cover days (default 5). Items without enough
    history fall back to their manual par.
@@ -653,13 +662,13 @@ function salesForecast(n){ if(_fc[n]!==undefined) return _fc[n];
   return _fc[n]={total,avgDaily:avgAll,daysOfData:pool.length}; }
 function usageModel(){ if(_model) return _model;
   const keyToId={}; state.vendors.forEach(v=>v.items.forEach(it=>{ keyToId['i:'+it.id]=it.id; keyToId['n:'+v.name+'|'+(it.sku||it.name)]=it.id; }));
-  const snaps=history.filter(s=>s&&s.ts).slice().sort((a,b)=>a.ts<b.ts?-1:(a.ts>b.ts?1:0)),series={};
+  const snaps=history.filter(s=>s&&s.ts&&(s.kind||'order')==='order').slice().sort((a,b)=>a.ts<b.ts?-1:(a.ts>b.ts?1:0)),series={};
   snaps.forEach(s=>{ const t=new Date(s.ts); (s.vendors||[]).forEach(v=>(v.items||[]).forEach(it=>{
     const id=(it.itemId&&keyToId['i:'+it.itemId])||keyToId['n:'+v.name+'|'+(it.sku||it.name)]; if(!id) return;
-    (series[id]=series[id]||[]).push({t,oh:Number(it.ohUnits)||0,order:Number(it.order)||0}); })); });
+    (series[id]=series[id]||[]).push({t,oh:Number(it.ohUnits)||0,order:Number(it.order)||0,actual:s.actual===true}); })); });
   const m={};
   Object.keys(series).forEach(id=>{ const arr=series[id]; let used=0,days=0,usedS=0,salesS=0,cycles=0,peak=0;
-    for(let i=1;i<arr.length;i++){ const a=arr[i-1],b=arr[i],d=(b.t-a.t)/DAY_MS; if(d<0.5||d>14) continue;
+    for(let i=1;i<arr.length;i++){ const a=arr[i-1],b=arr[i],d=(b.t-a.t)/DAY_MS; if(!a.actual||d<0.5||d>14) continue;
       const u=a.oh+a.order-b.oh; if(!isFinite(u)||u<0) continue;
       used+=u; days+=d; cycles++; peak=Math.max(peak,u/d);
       const sv=salesBetween(a.t,b.t); if(sv&&sv>0){ usedS+=u; salesS+=sv; } }
@@ -689,6 +698,11 @@ function pc(it){ return it.perCase>0?it.perCase:1; }
 function totalLoose(it){ const c=cell(it.id); return num(c.c)*pc(it)+num(c.l); }
 function onHandParUnit(it){ return it.parUnit==='loose' ? totalLoose(it) : totalLoose(it)/pc(it); }
 function orderQty(it,day){ const need=effPar(it,day)-onHandParUnit(it); return need>1e-9?Math.ceil(need-1e-9):0; }
+/* What is actually being ordered: the amount typed on the Orders tab, or the suggestion if nobody changed it. */
+function isAdjusted(it){ const a=orderAdj[it.id]; return a!=null&&a!==''&&isFinite(a); }
+function finalQty(it,day){ return isAdjusted(it)?Math.max(0,Number(orderAdj[it.id])):orderQty(it,day); }
+/* count-screen badges: the Sunday protein count previews Tuesday's suggestion; order counts show the real order */
+function badgeQty(it,day){ return ui.mode==='protein'?orderQty(it,day):finalQty(it,day); }
 function parULabel(it){ return it.parUnit==='loose'?(it.unit||'ea'):'cs'; }
 function plural(u,n){ u=u||'ea'; return (Math.abs(n-1)<1e-9||u==='ea'||/s$/.test(u))?u:u+'s'; }
 /* Quantities read in cases with the loose amount in parentheses: "15 cs (60 bags)".
@@ -704,7 +718,7 @@ function modeItems(v){ return v.items.filter(inMode); }
 function badgeInner(it,q){ const p=pc(it),loose=orderLoose(it,q),lbl=ui.mode==='protein'?'Tue order':'Order';
   if(p<=1) return `<span>${lbl}</span><b>${fmtN(q)}</b><span class="uu">${it.parUnit==='loose'?esc(plural(it.unit,q)):'cs'}</span>`;
   return `<span>${lbl}</span><b>${fmtN(loose/p)}</b><span class="uu">cs</span>${q>0?`<span class="sub">(${fmtN(loose)} ${esc(plural(it.unit,loose))})</span>`:''}`; }
-function vendorMeta(v,day){ const items=modeItems(v),n=ui.mode==='monthend'?0:items.filter(it=>orderQty(it,day)>0).length,u=items.filter(it=>!isCounted(it)).length;
+function vendorMeta(v,day){ const items=modeItems(v),n=ui.mode==='monthend'?0:items.filter(it=>badgeQty(it,day)>0).length,u=items.filter(it=>!isCounted(it)).length;
   return `${items.length} items${u?' · <b style="color:#b45309">'+u+' not counted</b>':''}${n?' · <b style="color:var(--red)">'+n+' to order</b>':''}`; }
 function progressHtml(){ let total=0,done=0; state.vendors.forEach(v=>modeItems(v).forEach(it=>{ total++; if(isCounted(it)) done++; }));
   return done>=total?`<span>✓ All ${total} items counted</span>`:`<span>${done} of ${total} counted · ${total-done} to go</span><button class="btn sm ghost" type="button" data-next-unc>Next uncounted ↓</button>`; }
@@ -718,7 +732,7 @@ function fmtDate(d){ return d.toLocaleDateString(undefined,{weekday:'long',year:
 function fmtTime(d){ return d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
 function findItem(id){ for(const v of state.vendors){ const it=v.items.find(x=>x.id===id); if(it) return {v,it}; } return {}; }
 function vendorSections(v){ const order=[],map={}; v.items.forEach(it=>{ const s=it.section||''; if(!(s in map)){ map[s]=[]; order.push(s); } map[s].push(it); }); order.forEach(s=>map[s].sort((a,b)=>a.name.localeCompare(b.name))); return order.map(s=>({name:s,items:map[s]})); }
-function toOrderCount(v,day){ let n=0; v.items.forEach(it=>{ if(orderQty(it,day)>0) n++; }); return n; }
+function toOrderCount(v,day){ let n=0; v.items.forEach(it=>{ if(finalQty(it,day)>0) n++; }); return n; }
 
 /* START */
 function renderStart(){ const now=new Date();
@@ -772,7 +786,7 @@ function renderCount(){
     secs.forEach(sec=>{
       if(hasSections&&sec.name) rows+=`<div class="secthead">${esc(sec.name)}</div>`;
       sec.items.forEach(it=>{
-        const ct=coverTarget(it),par=effPar(it,day),q=orderQty(it,day),ul=parULabel(it),un=esc(it.unit||'ea');
+        const ct=coverTarget(it),par=effPar(it,day),q=badgeQty(it,day),ul=parULabel(it),un=esc(it.unit||'ea');
         rows+=`<div class="irow ${q>0&&ui.mode!=='monthend'?'toorder':''} ${isCounted(it)?'':'uncounted'}" data-row="${it.id}">
           <div class="ihead">
             <div class="iname">${esc(nice(it.name))}<div class="pkg">${esc([it.sku,it.pkg,it.perCase>1?it.perCase+' per case':''].filter(Boolean).join(' · '))}</div></div>
@@ -804,7 +818,7 @@ function renderCount(){
     const t=cell(id); t.c=num(t.c)+num(cv); t.l=num(t.l)+num(lv); save(); pushCount(id); cIn.value=''; lIn.value=''; refreshItem(id); cIn.focus();
     flash('Added — total is now '+haveText(findItem(id).it,'0'));
   }
-  function refreshItem(id){ const it=findItem(id).it,q=orderQty(it,ui.day);
+  function refreshItem(id){ const it=findItem(id).it,q=badgeQty(it,ui.day);
     const h=host.querySelector('[data-have="'+id+'"]'); if(h) h.textContent=haveText(it);
     const row=host.querySelector('[data-row="'+id+'"]'); if(row) row.classList.toggle('uncounted',!isCounted(it));
     const oc=host.querySelector('[data-order="'+id+'"]'); if(oc){ oc.innerHTML=badgeInner(it,q); oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0&&ui.mode!=='monthend'); } updateAllMeta();
@@ -828,13 +842,13 @@ function renderCount(){
   document.getElementById('clearCounts').addEventListener('click',()=>{
     if(ui.mode==='protein') askConfirm('Clear the protein counts? Other items keep their counts.','Clear proteins',()=>{
       state.vendors.forEach(v=>v.items.forEach(it=>{ if(it.protein){ const t=cell(it.id); t.c=''; t.l=''; pushCount(it.id); } })); save(); renderCount(); });
-    else askConfirm('Clear all on-hand counts?','Clear counts',()=>{ counts={}; save(); pushCountsClear(); renderCount(); }); });
+    else askConfirm('Clear all on-hand counts? Order amounts typed on the Orders tab are cleared too.','Clear counts',()=>{ counts={}; orderAdj={}; save(); pushCountsClear(); renderCount(); }); });
 }
 
 /* ORDERS */
 function buildTextOrder(v,day){
   let out=`PEPPER LUNCH — ${v.name} order\nOrder day: ${FULL[day]}\n`+(state.userName?`Counted by: ${state.userName}\n`:'')+`\n`,total=0;
-  vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
+  vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:finalQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
     if(sec.name) out+=`— ${sec.name} —\n`;
     lines.forEach(l=>{ const sku=l.it.sku?l.it.sku+'  ':''; out+=`${orderLabel(l.it,l.q).padEnd(20,' ')}  ${sku}${l.it.name}\n`; total++; }); out+='\n'; });
   if(!total) out+='(Nothing to order — all pars met.)\n'; else out+=`Total items: ${total}`;
@@ -866,24 +880,52 @@ function downloadMonthEnd(){ const now=new Date(),loc=((state.locations||[]).fin
   const bytes=buildXlsx('MONTH END',rows,[14,12,46,16,14,14,12,10,11]);
   saveFile(`Month-End Inventory${loc?' '+loc:''} ${fmtFileDate(now)}.xlsx`,new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
 }
+/* One Orders-tab line: the amount box is in the item's par unit (cases, or loose for loose-par items),
+   prefilled with the suggestion. A changed amount shows the suggestion next to it with a ↺ to go back. */
+function orderLineHtml(it,day){ const q=finalQty(it,day),sug=orderQty(it,day),adj=isAdjusted(it)&&Number(orderAdj[it.id])!==sug;
+  return `<div class="line oline ${adj?'edited':''} ${q>0?'':'skip'}" data-oline="${it.id}"><span>${it.sku?'<span class="sku">'+esc(it.sku)+'</span> ':''}${esc(nice(it.name))} <span class="oh">Have ${haveText(it,'0')}</span>${adj?` <span class="oh sugg">Suggested ${esc(orderLabel(it,sug))} <button class="resetbtn" type="button" data-oreset="${it.id}" title="Use the suggested amount" aria-label="Use the suggested amount">↺</button></span>`:''}</span>
+    <span class="oqbox"><label class="oqin"><input class="count oq" inputmode="decimal" data-oq="${it.id}" value="${fmtN(q)}" aria-label="Order amount for ${esc(nice(it.name))}, in ${esc(parULabel(it))}"><span>${esc(parULabel(it))}</span></label><span class="qty" data-olabel="${it.id}">${q>0?esc(orderLabel(it,q)):'Not ordering'}</span></span></div>`; }
+/* Blank, or the same as the suggestion, goes back to following the suggestion. */
+function setOrderAdj(it,val,day){ const t=String(val==null?'':val).trim().replace(',','.'),n=Number(t);
+  if(t===''||!isFinite(n)||Math.max(0,n)===orderQty(it,day)) delete orderAdj[it.id]; else orderAdj[it.id]=Math.round(Math.max(0,n)*100)/100;
+  save(); pushAdj(it.id); }
+function refreshOrderLine(host,it,day){ const row=host.querySelector('[data-oline="'+it.id+'"]'); if(!row) return;
+  const tmp=document.createElement('div'); tmp.innerHTML=orderLineHtml(it,day); const fresh=tmp.firstElementChild;
+  // keep the same input element so focus and the keyboard stay where the user tapped next
+  const oldIn=row.querySelector('input[data-oq]'),newIn=fresh.querySelector('input[data-oq]'); if(oldIn&&newIn&&document.activeElement!==oldIn){ oldIn.value=newIn.value; }
+  if(oldIn&&newIn) newIn.replaceWith(oldIn);
+  row.replaceWith(fresh);
+  const rb=fresh.querySelector('[data-oreset]'); if(rb) rb.addEventListener('click',()=>{ setOrderAdj(it,'',day); refreshOrderLine(host,it,day); });
+  const v=findItem(it.id).v,m=v&&host.querySelector('[data-ometa="'+v.id+'"]'); if(m) m.textContent=toOrderCount(v,day)+' to order'; }
 function renderOrders(){
   if(ui.mode&&ui.mode!=='order'){ renderModeSummary(); return; }
   const day=ui.day,host=document.getElementById('tab-orders');
-  let html=uncountedBanner()+`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between"><div><b>Order summary</b> — ${FULL[day]}</div><div class="row"><button class="btn sm" id="saveInv">💾 Save this inventory</button>${IN_ARTIFACT?'':'<button class="btn sm ghost" id="printBtn">🖨️ Print all</button>'}</div></div></div></div>`;
+  let html=uncountedBanner()+`<div class="card"><div class="summary"><div class="row" style="justify-content:space-between"><div><b>Order summary</b> — ${FULL[day]}</div><div class="row"><button class="btn sm" id="saveInv">💾 Save this inventory</button>${IN_ARTIFACT?'':'<button class="btn sm ghost" id="printBtn">🖨️ Print all</button>'}</div></div>
+    <div class="hint" style="padding:6px 0 0">Ordering a different amount? Change the number to what you're really ordering (0 to skip). Copy, email, print and Excel use your numbers, and they're saved with the inventory.</div></div></div>`;
   state.vendors.forEach(v=>{
-    const recips=(v.recipients||'').trim()||(state.recipientsGlobal||'').trim(); let inner='',n=0;
-    vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return;
+    const recips=(v.recipients||'').trim()||(state.recipientsGlobal||'').trim(); let inner='',n=0,extra=[];
+    vendorSections(v).forEach(sec=>{ const lines=sec.items.filter(it=>isAdjusted(it)||orderQty(it,day)>0); sec.items.forEach(it=>{ if(!lines.includes(it)) extra.push(it); }); if(!lines.length) return;
       if(sec.name) inner+=`<div class="osec">${esc(sec.name)}</div>`;
-      inner+=lines.map(l=>{ n++; return `<div class="line"><span>${l.it.sku?'<span class="sku">'+esc(l.it.sku)+'</span> ':''}${esc(nice(l.it.name))} <span class="oh">Have ${haveText(l.it,'0')}</span></span><span class="qty">${esc(orderLabel(l.it,l.q))}</span></div>`; }).join('');
+      inner+=lines.map(it=>{ if(finalQty(it,day)>0) n++; return orderLineHtml(it,day); }).join('');
     });
-    const body=n?`<div class="summary">${inner}</div>`:`<div class="empty">Nothing to order for ${v.name} — all pars met for ${FULL[day]}.</div>`;
+    const addSel=extra.length?`<select class="addline" data-addline="${v.id}" aria-label="Add an item to the ${esc(v.name)} order"><option value="">＋ Add an item…</option>${extra.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(it=>`<option value="${it.id}">${esc(nice(it.name))}</option>`).join('')}</select>`:'';
+    const body=(inner?`<div class="summary">${inner}</div>`:`<div class="empty">Nothing to order for ${v.name} — all pars met for ${FULL[day]}.</div>`)+(addSel?`<div class="addlinewrap">${addSel}</div>`:'');
     let tools=`<button class="btn sm" data-copy="${v.id}">📋 Copy list</button>`;
     if(v.method==='excel') tools+=`<button class="btn sm gray" data-xlsx="${v.id}">⬇️ Download Excel</button>`;
     if(recips) tools+=IN_ARTIFACT?`<button class="btn sm ghost" data-email="${v.id}">✉️ Copy email text</button>`:`<button class="btn sm ghost" data-email="${v.id}">✉️ Email${v.method==='excel'?' (then attach)':''}</button>`;
-    html+=`<div class="card"><div class="vhead" style="cursor:default"><h2>${esc(v.name)}</h2>${methodBadge(v.method)}<span class="meta">${n} to order</span></div>
+    html+=`<div class="card"><div class="vhead" style="cursor:default"><h2>${esc(v.name)}</h2>${methodBadge(v.method)}<span class="meta" data-ometa="${v.id}">${n} to order</span></div>
       ${(v.note||'').trim()?`<div class="vnote">${esc(v.note)}</div>`:''}${body}${recips?`<div class="hint">Recipients: ${esc(recips)}</div>`:`<div class="hint">No recipients set — add them in ⚙️ Setup.</div>`}<div class="toolbar">${tools}</div></div>`;
   });
   host.innerHTML=html; wireBanner(host);
+  /* order amounts update in place, so tapping from one box to the next keeps the keyboard up */
+  host.querySelectorAll('input[data-oq]').forEach(inp=>{
+    inp.addEventListener('focus',()=>inp.select());
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); } });
+    inp.addEventListener('change',()=>{ const it=findItem(inp.dataset.oq).it; if(!it) return; setOrderAdj(it,inp.value,day); refreshOrderLine(host,it,day); }); });
+  host.querySelectorAll('[data-oreset]').forEach(b=>b.addEventListener('click',()=>{ const it=findItem(b.dataset.oreset).it; if(!it) return; setOrderAdj(it,'',day); refreshOrderLine(host,it,day); }));
+  host.querySelectorAll('[data-addline]').forEach(sel=>sel.addEventListener('change',()=>{ const it=findItem(sel.value).it; if(!it) return;
+    orderAdj[it.id]=1; save(); pushAdj(it.id); renderOrders();
+    const inp=host.querySelector('input[data-oq="'+it.id+'"]'); if(inp){ inp.scrollIntoView({block:'center'}); inp.focus(); } }));
   host.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>requireComplete(()=>{ copyText(buildTextOrder(state.vendors.find(x=>x.id===b.dataset.copy),day)); flash('Order list copied'); })));
   host.querySelectorAll('[data-xlsx]').forEach(b=>b.addEventListener('click',()=>requireComplete(()=>downloadExcel(state.vendors.find(x=>x.id===b.dataset.xlsx),day))));
   host.querySelectorAll('[data-email]').forEach(b=>b.addEventListener('click',()=>requireComplete(()=>emailOrder(state.vendors.find(x=>x.id===b.dataset.email),day))));
@@ -896,8 +938,10 @@ function doSaveSnapshot(){
   /* protein counts keep only proteins, so items nobody counted on Sunday don't read as used up;
      protein and month-end counts place no order */
   const snap={id:uid(), ts:now.toISOString(), dateStr:fmtDate(now), timeStr:fmtTime(now), day:ordering?day:WEEK[now.getDay()], kind, name:state.userName||'', vendors:[]};
+  /* actual: order holds what was really ordered (older snapshots only stored the suggestion) */
+  if(ordering) snap.actual=true;
   state.vendors.forEach(v=>{ const src=modeItems(v); if(!src.length) return;
-    const items=src.map(it=>({itemId:it.id, name:it.name, sku:it.sku||'', have:haveText(it,'0'), ohUnits:Math.round(onHandParUnit(it)*100)/100, par:ordering?effPar(it,day):0, order:ordering?orderQty(it,day):0, unit:parULabel(it)}));
+    const items=src.map(it=>({itemId:it.id, name:it.name, sku:it.sku||'', have:haveText(it,'0'), ohUnits:Math.round(onHandParUnit(it)*100)/100, par:ordering?effPar(it,day):0, order:ordering?finalQty(it,day):0, suggested:ordering?orderQty(it,day):0, unit:parULabel(it)}));
     const toOrder=items.filter(i=>i.order>0).length;
     snap.vendors.push({name:v.name, method:v.method, toOrder, items});
   });
@@ -918,7 +962,7 @@ function printAll(day){
   let w=window.open('','_blank');
   let h=`<html><head><title>Pepper Lunch Orders — ${FULL[day]}</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h1{color:#c8102e;margin:0 0 4px}h2{margin:22px 0 4px;border-bottom:2px solid #c8102e;padding-bottom:3px}h3{margin:12px 0 4px;color:#c8102e;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}td,th{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f3f3f3}.q{text-align:center;font-weight:bold;width:160px;white-space:nowrap}.none{color:#666;font-style:italic}</style></head><body><h1>Pepper Lunch — Order Sheet</h1><div>Order day: <b>${FULL[day]}</b>${state.userName?' &nbsp; Counted by: <b>'+esc(state.userName)+'</b>':''} &nbsp; Printed: ${fmtDate(new Date())}</div>`;
   state.vendors.forEach(v=>{ h+=`<h2>${esc(v.name)} — ${v.method}</h2>`; let any=false;
-    vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:orderQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return; any=true;
+    vendorSections(v).forEach(sec=>{ const lines=sec.items.map(it=>({it,q:finalQty(it,day)})).filter(l=>l.q>0); if(!lines.length) return; any=true;
       if(sec.name) h+=`<h3>${esc(sec.name)}</h3>`; h+='<table><tr><th>Order</th><th>SKU</th><th>Item</th><th>On hand</th></tr>';
       lines.forEach(l=>{ h+=`<tr><td class="q">${esc(orderLabel(l.it,l.q))}</td><td>${esc(l.it.sku||'')}</td><td>${esc(l.it.name)}</td><td>${haveText(l.it,'0')}</td></tr>`; }); h+='</table>'; });
     if(!any) h+='<div class="none">Nothing to order.</div>'; });
@@ -972,7 +1016,7 @@ function downloadExcel(v,day){
   rows.push([{v:'ITEM',s:1},{v:'PRODUCT NAME',s:1},{v:'BRAND',s:1},{v:'PACK',s:1},{v:'CASE',s:1},{v:'EACH',s:1}]);
   vendorSections(v).forEach(sec=>{
     if(sec.name) rows.push([{v:sec.name,s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1},{v:'',s:1}]);
-    sec.items.forEach(it=>{ const q=orderQty(it,day),p=pc(it),loose=orderLoose(it,q); let cs='',ea='';
+    sec.items.forEach(it=>{ const q=finalQty(it,day),p=pc(it),loose=orderLoose(it,q); let cs='',ea='';
       /* whole cases go in CASE, the leftover in EACH */
       if(q>0){ if(p>1){ const w=Math.floor(loose/p+1e-9),r=Math.round((loose-w*p)*100)/100; cs=w||''; ea=r||''; } else if(it.parUnit==='loose') ea=q; else cs=q; }
       rows.push([{v:it.sku||'',s:3},{v:it.name,s:3},{v:it.brand||'',s:3},{v:it.pkg||'',s:3},{v:cs,s:3},{v:ea,s:3}]); });
@@ -1082,12 +1126,12 @@ function renderSetup(){
   document.getElementById('exportBtn').addEventListener('click',exportBackup);
   document.getElementById('importBtn').addEventListener('click',()=>document.getElementById('importFile').click());
   document.getElementById('importFile').addEventListener('change',importBackup);
-  document.getElementById('resetBtn').addEventListener('click',()=>askConfirm('Reset ALL data to defaults? This erases your items, pars, and counts.','Reset everything',()=>{ const keepLoc={locations:state.locations,locationId:state.locationId}; state=Object.assign(seedConfig(),keepLoc); counts={}; save(); pushCountsAll(); renderSetup(); }));
+  document.getElementById('resetBtn').addEventListener('click',()=>askConfirm('Reset ALL data to defaults? This erases your items, pars, and counts.','Reset everything',()=>{ const keepLoc={locations:state.locations,locationId:state.locationId}; state=Object.assign(seedConfig(),keepLoc); counts={}; orderAdj={}; save(); pushCountsAll(); renderSetup(); }));
 }
-function exportBackup(){ const data=JSON.stringify({config:state,counts,history,sales,byLoc,exported:new Date().toISOString()},null,2);
+function exportBackup(){ const data=JSON.stringify({config:state,counts,history,sales,byLoc,orderAdj,exported:new Date().toISOString()},null,2);
   saveFile('pepper_lunch_inventory_backup_'+fmtFileDate(new Date())+'.json',new Blob([data],{type:'application/json'})); }
 function importBackup(e){ const file=e.target.files[0]; if(!file) return; const r=new FileReader();
-  r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.config){ state=o.config; counts=o.counts||{}; history=o.history||[]; sales=o.sales||{}; byLoc=o.byLoc||{};
+  r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.config){ state=o.config; counts=o.counts||{}; history=o.history||[]; sales=o.sales||{}; byLoc=o.byLoc||{}; orderAdj=o.orderAdj||{};
       if(!state.locations||!state.locations.length) state.locations=[{id:'moanalua',name:'Moanalua'}];
       if(!state.locationId||!state.locations.some(l=>l.id===state.locationId)) state.locationId=state.locations[0].id;
       migrate(); save(); pushCountsAll(); pushHistoryAll(); flash('Backup imported'); renderSetup(); }
@@ -1125,9 +1169,9 @@ function usageCardHtml(){
   const m=usageModel(),n=coverDays(),rows=[];
   state.vendors.forEach(v=>v.items.forEach(it=>{ const mm=m[it.id]; if(!mm) return; const ct=coverTarget(it)||{target:Math.round(mm.perDay*n*100)/100,src:'counts',perDay:mm.perDay};
     rows.push({v,it,mm,ct}); }));
-  const intro=`<div class="sub">Usage = stock that left between two saved inventories (on hand + what was ordered − next count). The target keeps <b>${n} days</b> of product on hand${state.autoPar?' and is applied to orders automatically':'. Automatic pars are off, so orders still use manual pars'} (change in ⚙️ Setup).</div>`;
+  const intro=`<div class="sub">Usage = stock that left between two saved inventories (on hand + what was actually ordered − next count). Only inventories saved with real order amounts are used. The target keeps <b>${n} days</b> of product on hand${state.autoPar?' and is applied to orders automatically':'. Automatic pars are off, so orders still use manual pars'} (change in ⚙️ Setup).</div>`;
   if(!rows.length) return `<div class="card"><div class="setup-sec"><h3>Usage &amp; ${n}-day targets</h3>${intro}
-    <div class="empty" style="padding:14px">Not enough history yet. Save an inventory on the 📦 Orders tab each time you count, at least 2 counts a few days apart, and targets will appear here.</div></div></div>`;
+    <div class="empty" style="padding:14px">Not enough history yet. Save an inventory on the 📦 Orders tab each time you order, with the amounts you really ordered, and targets will appear after 2 saves a few days apart.</div></div></div>`;
   const body=rows.map(r=>{ const ul=parULabel(r.it),manual=Number(r.it.pars.tue)||0;
     return `<tr><td>${esc(r.it.name)}<div class="sku">${esc(r.v.name)} · ${r.mm.cycles} count${r.mm.cycles>1?'s':''} over ${r.mm.days} days</div></td>
       <td class="num">${fmtN(r.ct.perDay)} ${esc(ul)}</td><td class="num"><span class="src">${r.ct.src==='sales'?'sales':'counts'}</span></td>
@@ -1160,24 +1204,44 @@ function renderHistory(){
   if(!history.length){ html+='<div class="card"><div class="empty">No saved inventories yet.<br><br>On the 📦 Orders tab, tap <b>“Save this inventory”</b> to archive a snapshot here.</div></div>'; host.innerHTML=html; wireHistoryTop(host); return; }
   html+='<div class="card"><div class="setup-sec"><h3>Saved inventories</h3><div class="sub">Every time you save on the Orders tab, a full snapshot (counts + order) is stored here.</div></div></div>';
   history.forEach((s,idx)=>{
-    const totOrder=s.vendors.reduce((a,v)=>a+(v.toOrder||0),0);
+    const totOrder=s.vendors.reduce((a,v)=>a+(v.toOrder||0),0),isOrder=(s.kind||'order')==='order',editing=isOrder&&s.actual===true&&ui.hEdit===s.id;
     let body='';
-    s.vendors.forEach(v=>{
+    if(isOrder) body+=s.actual===true
+      ?`<div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="hint" style="padding:0">${editing?'Type what actually arrived (in the unit shown), then save.':(s.correctedAt?'Order = what actually arrived (corrected'+(s.correctedBy?' by '+esc(s.correctedBy):'')+').':'Order = what was actually ordered.')}</span>${editing?'':`<button class="btn sm ghost" type="button" data-hfix="${idx}">✏️ Fix amounts received</button>`}</div>`
+      :`<div class="warnbox" style="margin-bottom:8px">Saved before real order amounts were recorded: these are the app's suggestions, which weren't always ordered. This inventory isn't used for usage.</div>`;
+    s.vendors.forEach((v,vi)=>{
       if(!v.items||!v.items.length) return;
-      body+=`<div class="osec">${esc(v.name)} — ${v.toOrder||0} to order</div><table class="histtbl"><tr><th>Item</th><th class="num">On hand</th><th class="num">Order</th></tr>`;
-      v.items.forEach(it=>{ body+=`<tr class="${it.order>0?'toorder':''}"><td>${esc(it.name)}</td><td class="num">${esc(it.have)}</td><td class="num">${it.order>0?'<b>'+it.order+' '+esc(it.unit)+'</b>':'—'}</td></tr>`; });
+      body+=`<div class="osec">${esc(v.name)} — ${v.toOrder||0} to order</div><table class="histtbl"><tr><th>Item</th><th class="num">On hand</th><th class="num">${isOrder&&s.actual!==true?'Suggested':'Order'}</th></tr>`;
+      v.items.forEach((it,ii)=>{ const o=Number(it.order)||0,sug=it.suggested!=null?Number(it.suggested)||0:null,notes=[];
+        if(sug!=null&&sug!==(it.origOrder!=null?Number(it.origOrder):o)) notes.push('suggested '+fmtN(sug));
+        if(it.origOrder!=null&&Number(it.origOrder)!==o) notes.push('ordered '+fmtN(it.origOrder));
+        if(editing&&!(o>0||sug>0||it.origOrder>0)) return;
+        const cellHtml=editing?`<input class="count oq" inputmode="decimal" data-hq="${vi}|${ii}" value="${fmtN(o)}" aria-label="Received amount for ${esc(it.name)}"> ${esc(it.unit)}`
+          :(o>0?'<b>'+fmtN(o)+' '+esc(it.unit)+'</b>':'—')+(notes.length?`<div class="sku">${esc(notes.join(' · '))}</div>`:'');
+        body+=`<tr class="${o>0?'toorder':''}"><td>${esc(it.name)}</td><td class="num">${esc(it.have)}</td><td class="num">${cellHtml}</td></tr>`; });
       body+='</table>';
     });
+    if(editing) body+=`<div class="row" style="margin-top:6px"><button class="btn sm" type="button" data-hsave="${idx}">💾 Save corrections</button><button class="btn sm ghost" type="button" data-hcancel="1">Cancel</button></div>`;
     html+=`<div class="card"><div class="vhead" data-htoggle="${idx}" style="cursor:pointer">
         <div><h2 style="font-size:15px">${esc(s.dateStr)}</h2><div class="meta">${s.kind==='protein'?'<b>🥩 Protein count</b> · ':s.kind==='monthend'?'<b>📦 Month-end count</b> · ':''}${esc(FULL[s.day]||s.day)} · ${esc(s.timeStr||'')}${s.name?' · 👤 '+esc(s.name):''}${(s.kind||'order')==='order'?` · <b style="color:var(--red)">${totOrder} to order</b>`:''}</div></div>
         <button class="btn sm ghost" data-hdel="${idx}" style="margin-left:auto">Delete</button><span class="chev">▾</span></div>
-      <div class="hbody" style="display:none;padding:12px 14px">${body||'<div class="empty">Nothing recorded.</div>'}</div></div>`;
+      <div class="hbody" style="${editing?'':'display:none;'}padding:12px 14px">${body||'<div class="empty">Nothing recorded.</div>'}</div></div>`;
   });
   host.innerHTML=html;
   wireHistoryTop(host);
   host.querySelectorAll('[data-htoggle]').forEach(h=>h.addEventListener('click',e=>{ if(e.target.closest('[data-hdel]')) return; const b=h.parentElement.querySelector('.hbody'); const open=b.style.display!=='none'; b.style.display=open?'none':''; h.querySelector('.chev').style.transform=open?'rotate(-90deg)':''; }));
   host.querySelectorAll('[data-hdel]').forEach(b=>b.addEventListener('click',()=>{ const s=history[Number(b.dataset.hdel)];
     askConfirm('Delete this saved inventory?','Delete',()=>{ const i=history.indexOf(s); if(i>=0) history.splice(i,1); save(); deleteSnapshot(s); renderHistory(); }); }));
+  host.querySelectorAll('[data-hfix]').forEach(b=>b.addEventListener('click',()=>{ const s=history[Number(b.dataset.hfix)]; if(!s) return; ui.hEdit=s.id; renderHistory(); }));
+  host.querySelectorAll('[data-hcancel]').forEach(b=>b.addEventListener('click',()=>{ ui.hEdit=null; renderHistory(); }));
+  host.querySelectorAll('[data-hsave]').forEach(b=>b.addEventListener('click',()=>{ const s=history[Number(b.dataset.hsave)]; if(!s) return; let n=0;
+    b.closest('.hbody').querySelectorAll('input[data-hq]').forEach(inp=>{ const [vi,ii]=inp.dataset.hq.split('|').map(Number),it=s.vendors[vi]&&s.vendors[vi].items[ii]; if(!it) return;
+      const t=inp.value.trim().replace(',','.'),q=Math.round(Math.max(0,Number(t))*100)/100; if(t===''||!isFinite(q)||q===(Number(it.order)||0)) return;
+      if(it.origOrder==null) it.origOrder=Number(it.order)||0; it.order=q; n++; });
+    ui.hEdit=null; if(!n){ renderHistory(); return; }
+    s.vendors.forEach(v=>{ v.toOrder=(v.items||[]).filter(i=>Number(i.order)>0).length; });
+    s.correctedBy=state.userName||''; s.correctedAt=new Date().toISOString();
+    save(); pushSnapshot(s); flash(n+' amount'+(n>1?'s':'')+' corrected'); renderHistory(); }));
 }
 
 /* PARS: one vendor at a time, Tue / Thu / Fri boxes on one line per item. Saves as you type. */
@@ -1242,9 +1306,11 @@ function pushConfig(){ if(!SYNC.on||!SYNC.storeRef||!SYNC.ready||!SYNC.synced) r
   if(salesPatch.length){ const args=[]; salesPatch.forEach(([k,v])=>args.push(new firebase.firestore.FieldPath('sales',k),v));
     SYNC.storeRef.update.apply(SYNC.storeRef,args).catch(e=>{ if(e&&e.code==='not-found') SYNC.storeRef.set({sales},{merge:true}).catch(syncErr); else syncErr(e); }); }
   const locs=ser(state.locations); if(SYNC.indexRef&&locs!==SYNC.last.locations){ SYNC.last.locations=locs; SYNC.indexRef.set({locations:state.locations},{merge:true}).catch(syncErr); } }
-function pushCountsAll(){ if(!SYNC.on||!SYNC.storeRef) return; storeUpdate({counts:counts}).catch(syncErr); }
+function pushCountsAll(){ if(!SYNC.on||!SYNC.storeRef) return; storeUpdate({counts:counts,orderAdj:orderAdj}).catch(syncErr); }
 function pushCount(id){ if(!SYNC.on||!SYNC.storeRef) return; const o={}; o['counts.'+id]=cell(id); SYNC.storeRef.update(o).catch(e=>{ if(e&&e.code==='not-found') SYNC.storeRef.set({counts:{[id]:cell(id)}},{merge:true}).catch(syncErr); else syncErr(e); }); }
-function pushCountsClear(){ if(!SYNC.on||!SYNC.storeRef) return; storeUpdate({counts:{}}).catch(syncErr); }
+function pushCountsClear(){ if(!SYNC.on||!SYNC.storeRef) return; storeUpdate({counts:{},orderAdj:{}}).catch(syncErr); }
+function pushAdj(id){ if(!SYNC.on||!SYNC.storeRef) return; const v=isAdjusted({id})?Number(orderAdj[id]):firebase.firestore.FieldValue.delete();
+  SYNC.storeRef.update(new firebase.firestore.FieldPath('orderAdj',id),v).catch(e=>{ if(e&&e.code==='not-found'&&isAdjusted({id})) SYNC.storeRef.set({orderAdj:{[id]:v}},{merge:true}).catch(syncErr); else if(!(e&&e.code==='not-found')) syncErr(e); }); }
 function snapData(s){ const o=Object.assign({},s); delete o.id; return o; }
 function pushSnapshot(s){ if(!SYNC.on||!SYNC.histRef) return; SYNC.histRef.doc(snapId(s).id).set(snapData(s)).catch(syncErr); }
 function deleteSnapshot(s){ if(!SYNC.on||!SYNC.histRef||!s||!s.id) return; SYNC.histRef.doc(s.id).delete().catch(syncErr); }
@@ -1258,7 +1324,7 @@ function isTypingIn(tabId){ const a=document.activeElement; const host=document.
 function refreshTab(own){ if(document.getElementById('appScreen').style.display==='none') return;
   // Count tab refreshes totals in place so a live update never clears the boxes someone is typing into.
   if(ui.tab==='count'){ try{ refreshAllTotals(); }catch(e){ renderCount(); } }
-  else if(ui.tab==='orders') renderOrders();
+  else if(ui.tab==='orders'){ if(!isTypingIn('tab-orders')) renderOrders(); }
   else if(ui.tab==='history'){ if(!isTypingIn('tab-history')) renderHistory(); }
   else if(ui.tab==='pars'){ if(!isTypingIn('tab-pars')) renderPars(); }
   else if(ui.tab==='setup'){ if(!(own||isTypingIn('tab-setup'))) renderSetup(); } }
@@ -1272,6 +1338,7 @@ function applyRemoteStore(data, own){ if(!data) return; SYNC.applying=true;
   if(Number(data.coverDays)>0&&!isDirty('coverDays')){ state.coverDays=Number(data.coverDays); SYNC.last.coverDays=ser(state.coverDays); }
   if(Array.isArray(data.vendors)&&!isDirty('parsVersion')){ state.parsVersion=Number(data.parsVersion)||0; SYNC.last.parsVersion=ser(state.parsVersion); }
   if(data.counts&&typeof data.counts==='object') counts=data.counts;
+  if(data.orderAdj&&typeof data.orderAdj==='object') orderAdj=data.orderAdj;
   if(data.sales&&typeof data.sales==='object'){ const pending=SYNC.lastSales&&ser(SYNC.lastSales)!==ser(sales); if(!pending){ sales=data.sales; SYNC.lastSales=Object.assign({},sales); } }
   if(Array.isArray(data.history)&&data.history.length){ if(!history.length) history=data.history.slice(); migrateHistoryArray(data.history); }
   const changed=migrate(); persistLocal(); SYNC.applying=false; if(changed) schedulePush(); refreshTab(own); }
@@ -1286,7 +1353,7 @@ function applyRemoteIndex(data){ if(!data) return;
 function refreshAllTotals(){ const host=document.getElementById('tab-count'); if(!host) return; let ok=true;
   state.vendors.forEach(v=>modeItems(v).forEach(it=>{ const h=host.querySelector('[data-have="'+it.id+'"]'); if(!h){ ok=false; return; } h.textContent=haveText(it);
     const row=h.closest('.irow'); if(row) row.classList.toggle('uncounted',!isCounted(it));
-    const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=orderQty(it,ui.day); oc.innerHTML=badgeInner(it,q); oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0&&ui.mode!=='monthend'); } }));
+    const oc=host.querySelector('[data-order="'+it.id+'"]'); if(oc){ const q=badgeQty(it,ui.day); oc.innerHTML=badgeInner(it,q); oc.classList.toggle('zero',q<=0); oc.closest('.irow').classList.toggle('toorder',q>0&&ui.mode!=='monthend'); } }));
   if(!ok){ renderCount(); return; }
   state.vendors.forEach(v=>{ const m=host.querySelector('[data-meta="'+v.id+'"]'); if(m) m.innerHTML=vendorMeta(v,ui.day); });
   const pg=host.querySelector('#cntProg'); if(pg){ pg.innerHTML=progressHtml(); pg.classList.toggle('done',!uncountedItems().length); } }
