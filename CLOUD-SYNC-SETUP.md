@@ -1,30 +1,24 @@
-# Going live: Pepper Lunch Inventory
+# Cloud sync setup: Pepper Lunch Inventory
 
-The Firebase project (`pepper-lunch-inventory`) is already connected in `index.html`.
-These four steps put the app on a real web address and lock the database so only
-phones with the store passcode can see or change anything. About 10 minutes, all
-clicking, no code.
+**Status: done.** The app is live at https://pepperlunch-inventory.netlify.app,
+anonymous sign-in is on, the security rules are published, and the store passcode
+is set. The steps below are a record of how it was set up, and what to repeat if
+the database ever has to be rebuilt.
 
-Do them in this order, in one sitting. Until step 3 is done the database is open
-to anyone who finds it.
+The website is hosted on Netlify and rebuilds from GitHub `main` by itself.
 
 ---
 
-## Step 1: Turn on GitHub Pages (the web address)
-1. Go to **github.com/the534Nteam/restaurantinventory** and click **Settings**.
-2. Click **Pages** in the left menu.
-3. Under **Branch**, pick **main**, leave the folder as **/ (root)**, and click **Save**.
-4. After a minute or two, refresh. The page shows the link:
-   **https://the534nteam.github.io/restaurantinventory/**
-
-From now on, every change pushed to `main` goes live on that link by itself.
+## Step 1: The web address
+Netlify site `pepperlunch-inventory`, connected to this repo's `main` branch.
+Every change pushed to `main` goes live on its own.
 
 ## Step 2: Turn on anonymous sign-in
 1. Go to **https://console.firebase.google.com** and open **pepper-lunch-inventory**.
 2. Left menu: **Build > Authentication**. If it asks, click **Get started**.
 3. Open the **Sign-in method** tab, click **Anonymous**, switch it **on**, and **Save**.
 4. Open the **Settings** tab > **Authorized domains** > **Add domain** and add
-   `the534nteam.github.io`.
+   `pepperlunch-inventory.netlify.app`.
 
 Staff never see a login. Each phone gets an invisible ID that the database uses
 to remember it entered the passcode.
@@ -71,8 +65,8 @@ daily sales go up one item or one day at a time.
 
 ## Troubleshooting
 * **Header says "Synced (unsecured)":** step 2 or step 3 isn't done yet.
-* **Header says "Sync error" after step 2:** check that `the534nteam.github.io` is in
-  Authorized domains. If the API key has website restrictions in Google Cloud
-  console, add `https://the534nteam.github.io/*` there too.
+* **Header says "Sync error" after step 2:** check that `pepperlunch-inventory.netlify.app`
+  is in Authorized domains. If the API key has website restrictions in Google Cloud
+  console, add `https://pepperlunch-inventory.netlify.app/*` there too.
 * **Locked out of every phone:** in Firebase console > Firestore > Data, delete the
   `settings` collection. The next person to open the app picks a new passcode.
